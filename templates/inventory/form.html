@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0">{{ title }}</h1>
+        <p class="text-muted">Registra nuevas entradas de inventario de bolsas y kilos.</p>
+    </div>
+</div>
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            <div class="mb-3">{{ form.date.label_tag }}{{ form.date }}</div>
+            <div class="mb-3">{{ form.bags_added.label_tag }}{{ form.bags_added }}</div>
+            <div class="mb-3">{{ form.kilos_added.label_tag }}{{ form.kilos_added }}</div>
+            <div class="mb-3">{{ form.notes.label_tag }}{{ form.notes }}</div>
+            <button class="btn btn-primary" type="submit">Guardar</button>
+            <a class="btn btn-secondary ms-2" href="{% url 'inventory_list' %}">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -6,6 +6,7 @@ from django.utils import timezone
 from sales.models import SaleItem
 from expenses.models import Expense, ExpenseCategory
 from products.models import Product
+from inventory.models import InventoryEntry
 
 
 def format_cop(value):
@@ -71,6 +72,30 @@ def home(request):
         total = expenses_year.filter(category=category).aggregate(total=Sum('amount'))['total'] or 0
         expense_distribution.append({'name': category.name, 'total': total})
 
+    inventory_totals = InventoryEntry.objects.aggregate(
+        total_bags=Sum('bags_added'),
+        total_kilos=Sum('kilos_added'),
+    )
+    inventory_month = InventoryEntry.objects.filter(date__gte=first_day_month).aggregate(
+        month_bags=Sum('bags_added'),
+        month_kilos=Sum('kilos_added'),
+    )
+    sold_totals = SaleItem.objects.aggregate(
+        sold_bags=Sum('quantity'),
+        sold_kilos=Sum(F('quantity') * F('product__weight_grams') / 1000.0, output_field=FloatField()),
+    )
+    sold_monthly = SaleItem.objects.filter(sale__sale_date__gte=first_day_month).aggregate(
+        sold_bags=Sum('quantity'),
+        sold_kilos=Sum(F('quantity') * F('product__weight_grams') / 1000.0, output_field=FloatField()),
+    )
+
+    total_bags = inventory_totals['total_bags'] or 0
+    total_kilos = inventory_totals['total_kilos'] or 0
+    sold_bags_total = sold_totals['sold_bags'] or 0
+    sold_kilos_total = sold_totals['sold_kilos'] or 0
+    stock_bags = total_bags - sold_bags_total
+    stock_kilos = total_kilos - sold_kilos_total
+
     context = {
         'sales_total_month': format_cop(sales_total_month),
         'expenses_total_month': format_cop(expenses_total_month),
@@ -82,7 +107,10 @@ def home(request):
         'sales_count_month': sales_count_month,
         'average_ticket': format_cop(average_ticket),
         'best_selling_product': best_selling_product.name if best_selling_product else 'N/A',
-        'most_profitable_product': most_profitable_product.name if most_profitable_product else 'N/A',
+        'stock_bags': stock_bags,
+        'stock_kilos': stock_kilos or 0,
+        'sold_bags_total': sold_bags_total,
+        'sold_kilos_total': sold_kilos_total or 0,
         'chart_labels': json.dumps(labels, ensure_ascii=False),
         'chart_sales_data': json.dumps(sales_history),
         'chart_expenses_data': json.dumps(expenses_history),
