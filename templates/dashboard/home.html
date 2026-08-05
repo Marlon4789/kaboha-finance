@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% load finance_filters %}
+
+{% block content %}
+<div class="row gy-3">
+    <div class="col-12">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+            <div>
+                <h1 class="h3 mb-0">Dashboard</h1>
+                <p class="text-muted">Visión rápida de ventas, gastos, utilidad y kilos vendidos.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Ventas del mes</h6>
+                <h3 class="card-title">{{ sales_total_month }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Gastos del mes</h6>
+                <h3 class="card-title">{{ expenses_total_month }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm metric-card {% if profit_month_value > 0 %}metric-positive{% elif profit_month_value < 0 %}metric-negative{% else %}metric-zero{% endif %}">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Utilidad del mes</h6>
+                <p class="text-muted small mb-3">Lo que queda este mes después de pagar los gastos.</p>
+                <h3 class="card-title">{{ profit_month }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm metric-card {% if margin_month_value > 0 %}metric-positive{% elif margin_month_value < 0 %}metric-negative{% else %}metric-zero{% endif %}">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Margen del mes</h6>
+                <p class="text-muted small mb-3">Porcentaje de venta que queda como ganancia.</p>
+                <h3 class="card-title">{{ margin_month }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Kilos vendidos</h6>
+                <h3 class="card-title">{{ kilograms_sold_month }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Número de ventas</h6>
+                <h3 class="card-title">{{ sales_count_month }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Ticket promedio</h6>
+                <p class="text-muted small mb-3">Valor promedio de cada venta registrada este mes.</p>
+                <h3 class="card-title">{{ average_ticket }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Producto más vendido</h6>
+                <h3 class="card-title">{{ best_selling_product }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="row gy-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm chart-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Ventas por mes</h5>
+                        <div class="chart-container mt-3">
+                            <canvas id="salesChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm chart-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Gastos vs Ventas</h5>
+                        <div class="chart-container mt-3">
+                            <canvas id="expensesChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm chart-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Kilos vendidos por mes</h5>
+                        <div class="chart-container mt-3">
+                            <canvas id="kgChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm chart-card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Distribución de gastos</h5>
+                        <div class="chart-container mt-3">
+                            <canvas id="expensePieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const labels = {{ chart_labels|safe }};
+    const salesData = {{ chart_sales_data|safe }};
+    const expensesData = {{ chart_expenses_data|safe }};
+    const kgData = {{ chart_kg_data|safe }};
+    const expenseLabels = {{ chart_expense_labels|safe }};
+    const expenseValues = {{ chart_expense_values|safe }};
+
+    const salesChart = new Chart(document.getElementById('salesChart'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Ventas',
+                data: salesData,
+                backgroundColor: '#0d6efd',
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    const expensesChart = new Chart(document.getElementById('expensesChart'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Ventas', data: salesData, borderColor: '#0d6efd', tension: 0.4 },
+                { label: 'Gastos', data: expensesData, borderColor: '#dc3545', tension: 0.4 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    const kgChart = new Chart(document.getElementById('kgChart'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{ label: 'Kilos', data: kgData, backgroundColor: '#198754' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    const expensePieChart = new Chart(document.getElementById('expensePieChart'), {
+        type: 'doughnut',
+        data: {
+            labels: expenseLabels,
+            datasets: [{ data: expenseValues, backgroundColor: ['#0d6efd','#6c757d','#198754','#fd7e14','#dc3545','#6610f2','#20c997'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,58 @@
+body {
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.card {
+    border: none;
+}
+.table th, .table td {
+    vertical-align: middle;
+}
+.icon-btn {
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 10px;
+}
+.table-actions {
+    white-space: nowrap;
+}
+.btn-icon-text i {
+    vertical-align: text-bottom;
+}
+.chart-card {
+    min-height: 360px;
+}
+.chart-card .card-body {
+    display: flex;
+    flex-direction: column;
+}
+.chart-card .chart-container {
+    flex: 1 1 auto;
+    min-height: 260px;
+}
+.chart-card canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.metric-card {
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+.metric-positive {
+    background-color: #d4edda;
+    color: #0f5132;
+}
+.metric-negative {
+    background-color: #ffe5d0;
+    color: #7a381f;
+}
+.metric-zero {
+    background-color: #e9ecef;
+    color: #495057;
+}
+.metric-card .card-body {
+    min-height: 120px;
+}

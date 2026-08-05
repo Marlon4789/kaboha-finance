@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h2 class="h5 mb-4">Eliminar elemento</h2>
+        <p>¿Estás seguro de que deseas eliminar <strong>{{ object_name }}</strong>?</p>
+        <form method="post">
+            {% csrf_token %}
+            <button class="btn btn-danger btn-icon-text" type="submit"><i class="bi bi-trash-fill me-1"></i>Eliminar</button>
+            <a class="btn btn-secondary" href="{{ cancel_url }}">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

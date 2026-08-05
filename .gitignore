@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+.ENV/
+.env/
+
+# Local config and secrets
+.env
+.gitconfig
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.ripgreprc
+.mcp.json
+.idea/
+.vscode/
+.claude/
+runserver.log
+runserver.pid
+
+# SQLite
+db.sqlite3
+db.sqlite3-journal
+
+# Django
+*.log
+*.pot
+*.pyc
+staticfiles/
+media/
+
+# Editor files
+.vscode/
+*.swp
+*~
