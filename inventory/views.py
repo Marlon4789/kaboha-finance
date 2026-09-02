@@ -16,10 +16,12 @@ def inventory_list(request):
     totals = InventoryEntry.objects.aggregate(
         total_bags=Sum('bags_added'),
         total_kilos=Sum('kilos_added'),
+        total_kilos_pergamino=Sum('kilos_pergamino'),
     )
     monthly_totals = InventoryEntry.objects.filter(date__gte=first_day_month).aggregate(
         month_bags=Sum('bags_added'),
         month_kilos=Sum('kilos_added'),
+        month_kilos_pergamino=Sum('kilos_pergamino'),
     )
 
     sold_totals = SaleItem.objects.aggregate(
@@ -33,10 +35,12 @@ def inventory_list(request):
 
     total_bags = totals['total_bags'] or 0
     total_kilos = totals['total_kilos'] or 0
+    total_kilos_pergamino = totals['total_kilos_pergamino'] or 0
     sold_bags_total = sold_totals['sold_bags'] or 0
     sold_kilos_total = sold_totals['sold_kilos'] or 0
     month_bags = monthly_totals['month_bags'] or 0
     month_kilos = monthly_totals['month_kilos'] or 0
+    month_kilos_pergamino = monthly_totals['month_kilos_pergamino'] or 0
     sold_bags_month = sold_monthly['sold_bags'] or 0
     sold_kilos_month = sold_monthly['sold_kilos'] or 0
 
@@ -47,10 +51,12 @@ def inventory_list(request):
         'entries': entries,
         'total_bags': total_bags,
         'total_kilos': total_kilos,
+        'total_kilos_pergamino': total_kilos_pergamino,
         'sold_bags_total': sold_bags_total,
         'sold_kilos_total': sold_kilos_total,
         'month_bags': month_bags,
         'month_kilos': month_kilos,
+        'month_kilos_pergamino': month_kilos_pergamino,
         'sold_bags_month': sold_bags_month,
         'sold_kilos_month': sold_kilos_month,
         'stock_bags': stock_bags,

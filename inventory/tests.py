@@ -4,15 +4,25 @@ from django.utils import timezone
 from inventory.models import InventoryEntry
 from products.models import Product
 from sales.models import Sale, SaleItem
+from .forms import InventoryEntryForm
 
 
 class InventoryTests(TestCase):
+    def test_inventory_form_is_in_spanish_and_includes_pergamino(self):
+        form = InventoryEntryForm()
+
+        self.assertIn('kilos_pergamino', form.fields)
+        self.assertEqual(form.fields['kilos_pergamino'].label, 'Kilos de café pergamino')
+        response = self.client.get(reverse('inventory_create'))
+        self.assertContains(response, 'Kilos de café pergamino')
+        self.assertContains(response, 'Cantidad de café pergamino.')
+
     def test_inventory_list_page_status_code(self):
         response = self.client.get(reverse('inventory_list'))
         self.assertEqual(response.status_code, 200)
 
     def test_inventory_entry_and_sales_affect_stock(self):
-        InventoryEntry.objects.create(date=timezone.localdate(), bags_added=10, kilos_added=50)
+        InventoryEntry.objects.create(date=timezone.localdate(), bags_added=10, kilos_added=50, kilos_pergamino=12)
         product = Product.objects.create(
             name='Café Test',
             description='Café para prueba',
@@ -29,5 +39,7 @@ class InventoryTests(TestCase):
         self.assertContains(response, '8')
         self.assertContains(response, 'Bolsas vendidas')
         self.assertContains(response, '2')
+        self.assertContains(response, 'Kilos pergamino')
         self.assertEqual(response.context['stock_kilos'], 49.0)
         self.assertEqual(response.context['sold_bags_total'], 2)
+        self.assertEqual(response.context['total_kilos_pergamino'], 12.0)

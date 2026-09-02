@@ -12,10 +12,23 @@
         <form method="post">
             {% csrf_token %}
             {{ form.non_field_errors }}
-            <div class="mb-3">{{ form.date.label_tag }}{{ form.date }}</div>
-            <div class="mb-3">{{ form.bags_added.label_tag }}{{ form.bags_added }}</div>
-            <div class="mb-3">{{ form.kilos_added.label_tag }}{{ form.kilos_added }}</div>
-            <div class="mb-3">{{ form.notes.label_tag }}{{ form.notes }}</div>
+            <div class="mb-3">
+                {{ form.date.label_tag }}{{ form.date }}{{ form.date.errors }}
+            </div>
+            <div class="mb-3">
+                {{ form.bags_added.label_tag }}{{ form.bags_added }}{{ form.bags_added.errors }}
+            </div>
+            <div class="mb-3">
+                {{ form.kilos_added.label_tag }}{{ form.kilos_added }}
+                <div class="form-text">{{ form.kilos_added.help_text }}</div>{{ form.kilos_added.errors }}
+            </div>
+            <div class="mb-3">
+                {{ form.kilos_pergamino.label_tag }}{{ form.kilos_pergamino }}
+                <div class="form-text">{{ form.kilos_pergamino.help_text }}</div>{{ form.kilos_pergamino.errors }}
+            </div>
+            <div class="mb-3">
+                {{ form.notes.label_tag }}{{ form.notes }}{{ form.notes.errors }}
+            </div>
             <button class="btn btn-primary" type="submit">Guardar</button>
             <a class="btn btn-secondary ms-2" href="{% url 'inventory_list' %}">Cancelar</a>
         </form>

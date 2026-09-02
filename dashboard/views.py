@@ -1,5 +1,5 @@
 from datetime import date
-from django.db.models import Sum, F, FloatField, Avg
+from django.db.models import Sum, F, FloatField, Avg, Q
 import json
 from django.shortcuts import render
 from django.utils import timezone
@@ -20,6 +20,26 @@ def format_cop(value):
 
 def get_month_range(year, month):
     return date(year, month, 1)
+
+
+def sync_monthly_summary(year, month):
+    sales_qs = SaleItem.objects.filter(sale__sale_date__year=year, sale__sale_date__month=month)
+    expense_qs = Expense.objects.filter(date__year=year, date__month=month)
+    sales_total = sales_qs.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0
+    expenses_total = expense_qs.aggregate(total=Sum('amount'))['total'] or 0
+    profit_total = sales_total - expenses_total
+    bags_sold = sales_qs.aggregate(total=Sum('quantity'))['total'] or 0
+
+    MonthlySummary.objects.update_or_create(
+        year=year,
+        month=month,
+        defaults={
+            'sales_total': sales_total,
+            'expenses_total': expenses_total,
+            'profit_total': profit_total,
+            'bags_sold': bags_sold,
+        },
+    )
 
 
 def home(request):
@@ -110,21 +130,20 @@ def home(request):
     average_value_per_bag = (all_time_sales_total / sold_bags_total) if sold_bags_total else fallback_bag_price
     sales_objective = stock_bags * average_value_per_bag
 
-    # Ensure previous month summary is stored
-    prev_month = first_day_month.month - 1 or 12
-    prev_year = first_day_month.year if first_day_month.month != 1 else first_day_month.year - 1
-    ms, created = MonthlySummary.objects.get_or_create(year=prev_year, month=prev_month)
-    if created:
-        # compute aggregates for previous month
-        prev_sales_qs = SaleItem.objects.filter(sale__sale_date__year=prev_year, sale__sale_date__month=prev_month)
-        prev_exp_qs = Expense.objects.filter(date__year=prev_year, date__month=prev_month)
-        ms.sales_total = prev_sales_qs.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0
-        ms.expenses_total = prev_exp_qs.aggregate(total=Sum('amount'))['total'] or 0
-        ms.profit_total = ms.sales_total - ms.expenses_total
-        ms.bags_sold = prev_sales_qs.aggregate(total=Sum('quantity'))['total'] or 0
-        ms.save()
+    # Refresh stored periods with sales, then hide only future months from the history.
+    periods_with_sales = SaleItem.objects.values(
+        'sale__sale_date__year', 'sale__sale_date__month'
+    ).distinct()
+    for period in periods_with_sales:
+        period_year = period['sale__sale_date__year']
+        period_month = period['sale__sale_date__month']
+        if (period_year, period_month) <= (today.year, today.month):
+            sync_monthly_summary(period_year, period_month)
 
-    monthly_records = MonthlySummary.objects.all()
+    monthly_records = MonthlySummary.objects.filter(
+        Q(year__lt=today.year) | Q(year=today.year, month__lte=today.month),
+        sales_total__gt=0,
+    ).order_by('-year', '-month')
 
     context = {
         'current_month_display': current_month_display,

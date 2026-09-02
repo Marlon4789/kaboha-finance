@@ -22,9 +22,18 @@
     <div class="col-md-6 col-xl-3">
         <div class="card shadow-sm">
             <div class="card-body">
-                <h6 class="card-subtitle mb-2 text-muted">Kilos disponibles</h6>
+                <h6 class="card-subtitle mb-2 text-muted">Kilos molidos disponibles</h6>
                 <h3 class="card-title">{{ stock_kilos|floatformat:2 }}</h3>
-                <p class="text-muted small mb-0">Total kilos ingresados menos kilos vendidos.</p>
+                <p class="text-muted small mb-0">Kilos molidos ingresados menos kilos vendidos.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Kilos pergamino</h6>
+                <h3 class="card-title">{{ total_kilos_pergamino|floatformat:2 }}</h3>
+                <p class="text-muted small mb-0">Total de kilos pergamino registrados.</p>
             </div>
         </div>
     </div>
@@ -53,7 +62,8 @@
             <div class="card-body">
                 <h6 class="card-subtitle mb-2 text-muted">Inventario mensual</h6>
                 <p class="mb-1">Bolsas ingresadas: <strong>{{ month_bags }}</strong></p>
-                <p class="mb-1">Kilos ingresados: <strong>{{ month_kilos|floatformat:2 }}</strong></p>
+                <p class="mb-1">Kilos molidos ingresados: <strong>{{ month_kilos|floatformat:2 }}</strong></p>
+                <p class="mb-1">Kilos pergamino: <strong>{{ month_kilos_pergamino|floatformat:2 }}</strong></p>
                 <p class="mb-1">Bolsas vendidas: <strong>{{ sold_bags_month }}</strong></p>
                 <p class="mb-0">Kilos vendidos: <strong>{{ sold_kilos_month|floatformat:2 }}</strong></p>
             </div>
@@ -64,7 +74,8 @@
             <div class="card-body">
                 <h6 class="card-subtitle mb-2 text-muted">Totales de inventario</h6>
                 <p class="mb-1">Bolsas ingresadas totales: <strong>{{ total_bags }}</strong></p>
-                <p class="mb-1">Kilos ingresados totales: <strong>{{ total_kilos|floatformat:2 }}</strong></p>
+                <p class="mb-1">Kilos molidos ingresados totales: <strong>{{ total_kilos|floatformat:2 }}</strong></p>
+                <p class="mb-1">Kilos pergamino totales: <strong>{{ total_kilos_pergamino|floatformat:2 }}</strong></p>
                 <p class="mb-0">Registros de inventario: <strong>{{ entries.count }}</strong></p>
             </div>
         </div>
@@ -77,7 +88,8 @@
                 <tr>
                     <th>Fecha</th>
                     <th>Bolsas</th>
-                    <th>Kilos</th>
+                    <th>Kilos molidos</th>
+                    <th>Kilos pergamino</th>
                     <th>Notas</th>
                     <th>Acciones</th>
                 </tr>
@@ -88,6 +100,7 @@
                         <td>{{ entry.date }}</td>
                         <td>{{ entry.bags_added }}</td>
                         <td>{{ entry.kilos_added|floatformat:2 }}</td>
+                        <td>{{ entry.kilos_pergamino|floatformat:2 }}</td>
                         <td>{{ entry.notes|default:'-' }}</td>
                         <td class="table-actions">
                             <a class="btn btn-outline-secondary btn-sm icon-btn" href="{% url 'inventory_edit' entry.pk %}" title="Editar"><i class="bi bi-pencil-fill"></i></a>
@@ -95,7 +108,7 @@
                         </td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="5" class="text-center">No hay entradas de inventario.</td></tr>
+                    <tr><td colspan="6" class="text-center">No hay entradas de inventario.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

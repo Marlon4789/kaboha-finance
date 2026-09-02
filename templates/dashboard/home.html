@@ -2,18 +2,16 @@
 {% load finance_filters %}
 
 {% block content %}
-<div class="row gy-3">
+<div class="dashboard-page">
     <div class="col-12">
-        <div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="dashboard-header d-flex align-items-center justify-content-between">
             <div>
                 <h1 class="h3 mb-0">Panel de control</h1>
                 <p class="text-muted">Resumen de {{ current_month_display }}</p>
             </div>
-            <div>
-                <small class="text-muted">Registros mensuales</small>
-            </div>
         </div>
     </div>
+    <div class="row g-2 dashboard-primary-grid">
     <div class="col-md-6 col-xl-4">
         <div class="card shadow-sm dashboard-card">
             <div class="card-body">
@@ -70,15 +68,16 @@
             </div>
         </div>
     </div>
+    </div>
     <div class="col-12">
-        <div class="card shadow-sm dashboard-card dashboard-secondary-card dashboard-collapsible-section">
+        <div class="dashboard-section dashboard-collapsible-section">
             <div class="card-body">
                 <button class="btn btn-link p-0 d-flex align-items-center" type="button" data-bs-toggle="collapse" data-bs-target="#moreIndicators" aria-expanded="false" aria-controls="moreIndicators">
                     <span>Más indicadores</span>
                     <i class="bi bi-chevron-down ms-2 text-muted"></i>
                 </button>
                 <div class="collapse mt-3" id="moreIndicators">
-                    <div class="row gy-3">
+                    <div class="row g-2">
                         <div class="col-md-6 col-xl-4">
                             <div class="card shadow-sm dashboard-card dashboard-secondary-card collapse-card">
                                 <div class="card-body">
@@ -129,14 +128,14 @@
         </div>
     </div>
     <div class="col-12 mt-3">
-        <div class="card shadow-sm dashboard-card dashboard-secondary-card dashboard-collapsible-section">
+        <div class="dashboard-section dashboard-collapsible-section">
             <div class="card-body">
                 <button class="btn btn-link p-0 d-flex align-items-center" type="button" data-bs-toggle="collapse" data-bs-target="#monthlyHistory" aria-expanded="false" aria-controls="monthlyHistory">
                     <span>Historial mensual</span>
                     <i class="bi bi-chevron-down ms-2 text-muted"></i>
                 </button>
                 <div class="collapse mt-3" id="monthlyHistory">
-                    <div class="row gy-2">
+                    <div class="row g-2">
                         {% for rec in monthly_records %}
                         <div class="col-12 col-md-6 col-lg-4">
                             <div class="card shadow-sm dashboard-card dashboard-secondary-card collapse-card py-2">
@@ -163,7 +162,7 @@
         </div>
     </div>
     <div class="col-12">
-        <div class="row gy-4">
+        <div class="row g-2 dashboard-charts">
             <div class="col-lg-6">
                 <div class="card shadow-sm chart-card h-100">
                     <div class="card-body">
