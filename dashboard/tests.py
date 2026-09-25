@@ -168,3 +168,38 @@ class DashboardTests(TestCase):
         self.assertContains(response, f"{month_names_es[prev_month - 1].capitalize()} {prev_year}")
         self.assertNotContains(response, f"{month_names_es[future_month - 1].capitalize()} {future_year}")
 
+    def test_home_uses_selected_month_for_dashboard_indicators(self):
+        today = timezone.localdate()
+        month_names_es = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+        if today.month == 1:
+            selected_year = today.year - 1
+            selected_month = 12
+        else:
+            selected_year = today.year
+            selected_month = today.month - 1
+
+        product = Product.objects.create(
+            name='Café Selector',
+            description='Café para selector mensual',
+            weight_grams=500,
+            sale_price=40000,
+            production_cost=15000,
+            active=True,
+        )
+        sale = Sale.objects.create(
+            sale_date=date(selected_year, selected_month, 8),
+            payment_method='Efectivo',
+        )
+        SaleItem.objects.create(sale=sale, product=product, quantity=2, unit_price=40000)
+
+        response = self.client.get(
+            reverse('dashboard_home'),
+            {'month': f'{selected_year:04d}-{selected_month:02d}'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['selected_month'], f'{selected_year:04d}-{selected_month:02d}')
+        self.assertEqual(response.context['current_month_display'], f'{month_names_es[selected_month - 1].capitalize()} {selected_year}')
+        self.assertContains(response, '$80.000 COP')
+        self.assertContains(response, f'{month_names_es[selected_month - 1].capitalize()} {selected_year}')
+

@@ -44,17 +44,43 @@ def sync_monthly_summary(year, month):
 
 def home(request):
     today = timezone.localdate()
-    first_day_month = today.replace(day=1)
     # Spanish month names for display
     month_names_es = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-    current_month_display = f"{month_names_es[today.month - 1].capitalize()} {today.year}"
+    available_periods = set(
+        (sale_date.year, sale_date.month)
+        for sale_date in SaleItem.objects.values_list('sale__sale_date', flat=True)
+        if sale_date and (sale_date.year, sale_date.month) <= (today.year, today.month)
+    )
+    available_periods.update(
+        (expense_date.year, expense_date.month)
+        for expense_date in Expense.objects.values_list('date', flat=True)
+        if expense_date and (expense_date.year, expense_date.month) <= (today.year, today.month)
+    )
+    available_periods.update(
+        (entry_date.year, entry_date.month)
+        for entry_date in InventoryEntry.objects.values_list('date', flat=True)
+        if entry_date and (entry_date.year, entry_date.month) <= (today.year, today.month)
+    )
+    available_periods.add((today.year, today.month))
+    available_periods = sorted(available_periods, reverse=True)
+
+    selected_period = request.GET.get('month', '')
+    try:
+        selected_year, selected_month = (int(value) for value in selected_period.split('-'))
+        if (selected_year, selected_month) not in available_periods:
+            raise ValueError
+    except (TypeError, ValueError):
+        selected_year, selected_month = today.year, today.month
+
+    first_day_month = date(selected_year, selected_month, 1)
+    current_month_display = f"{month_names_es[selected_month - 1].capitalize()} {selected_year}"
     annual_start = today.replace(month=1, day=1)
 
     sales_items = SaleItem.objects.filter(sale__sale_date__gte=annual_start)
     expenses_year = Expense.objects.filter(date__gte=annual_start)
 
-    monthly_sales = sales_items.filter(sale__sale_date__gte=first_day_month)
-    monthly_expenses = expenses_year.filter(date__gte=first_day_month)
+    monthly_sales = SaleItem.objects.filter(sale__sale_date__year=selected_year, sale__sale_date__month=selected_month)
+    monthly_expenses = Expense.objects.filter(date__year=selected_year, date__month=selected_month)
 
     sales_total_month = monthly_sales.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0
     expenses_total_month = monthly_expenses.aggregate(total=Sum('amount'))['total'] or 0
@@ -72,7 +98,10 @@ def home(request):
     sales_count_month = monthly_sales.values('sale').distinct().count()
     average_ticket = (sales_total_month / sales_count_month) if sales_count_month else 0
 
-    best_selling_product = Product.objects.annotate(total_quantity=Sum('saleitem__quantity')).order_by('-total_quantity').first()
+    best_selling_product = Product.objects.filter(
+        saleitem__sale__sale_date__year=selected_year,
+        saleitem__sale__sale_date__month=selected_month,
+    ).annotate(total_quantity=Sum('saleitem__quantity')).order_by('-total_quantity').first()
     most_profitable_product = Product.objects.annotate(total_profit=Sum((F('saleitem__unit_price') - F('production_cost')) * F('saleitem__quantity'), output_field=FloatField())).order_by('-total_profit').first()
 
     sales_history = []
@@ -98,7 +127,7 @@ def home(request):
     categories = ExpenseCategory.objects.all()
     expense_distribution = []
     for category in categories:
-        total = expenses_year.filter(category=category).aggregate(total=Sum('amount'))['total'] or 0
+        total = monthly_expenses.filter(category=category).aggregate(total=Sum('amount'))['total'] or 0
         expense_distribution.append({'name': category.name, 'total': total})
 
     inventory_totals = InventoryEntry.objects.aggregate(
@@ -147,6 +176,14 @@ def home(request):
 
     context = {
         'current_month_display': current_month_display,
+        'selected_month': f'{selected_year:04d}-{selected_month:02d}',
+        'available_months': [
+            {
+                'value': f'{year:04d}-{month:02d}',
+                'label': f'{month_names_es[month - 1].capitalize()} {year}',
+            }
+            for year, month in available_periods
+        ],
         'sales_total_month': format_cop(sales_total_month),
         'sales_objective': format_cop(sales_objective),
         'sales_objective_note': 'Valor del stock no vendido multiplicado por el precio promedio por bolsa.',

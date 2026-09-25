@@ -9,6 +9,14 @@
                 <h1 class="h3 mb-0">Panel de control</h1>
                 <p class="text-muted">Resumen de {{ current_month_display }}</p>
             </div>
+            <form class="dashboard-period-form" method="get">
+                <label class="visually-hidden" for="dashboard-month">Seleccionar mes</label>
+                <select class="form-select form-select-sm" id="dashboard-month" name="month" onchange="this.form.submit()">
+                    {% for period in available_months %}
+                    <option value="{{ period.value }}" {% if period.value == selected_month %}selected{% endif %}>{{ period.label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
         </div>
     </div>
     <div class="row g-2 dashboard-primary-grid">

@@ -159,6 +159,21 @@ body {
     color: var(--dashboard-muted) !important;
     font-size: 0.82rem;
 }
+.dashboard-period-form {
+    width: min(10.5rem, 42vw);
+}
+.dashboard-period-form .form-select {
+    border-color: #b8c7d6;
+    border-radius: 8px;
+    color: var(--dashboard-ink);
+    font-size: 0.78rem;
+    font-weight: 600;
+    box-shadow: none;
+}
+.dashboard-period-form .form-select:focus {
+    border-color: #558ab5;
+    box-shadow: 0 0 0 0.15rem rgba(85, 138, 181, 0.16);
+}
 .dashboard-primary-grid,
 .dashboard-charts {
     margin: 0;
@@ -341,6 +356,12 @@ body {
     }
     .dashboard-header h1 {
         font-size: 1.35rem;
+    }
+    .dashboard-header {
+        align-items: flex-start !important;
+    }
+    .dashboard-period-form {
+        width: 9.25rem;
     }
     .dashboard-primary-grid > [class*="col-"] {
         padding: 0.2rem 0;
