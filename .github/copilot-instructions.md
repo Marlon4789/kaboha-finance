@@ -4,6 +4,58 @@
 
 Cafena es una aplicación web Django para administrar finanzas, ventas, inventario y rentabilidad de un negocio de café especializado. El repositorio conserva el nombre histórico Kaboha Finance en documentación y varios contextos, pero el proyecto actual debe tratarse como Cafena y no renombrar automáticamente módulos, vistas, URLs, clases ni variables solo porque el viejo nombre aún aparece en textos o nombres heredados.
 
+## Gate de arquitectura para Cafena v1
+
+Antes de crear modelos, migraciones, apps, vistas o flujos agrícolas nuevos, el agente debe respetar este orden obligatorio:
+
+1. Auditoría del proyecto actual.
+2. Identificación de fuentes de verdad y reutilización del dominio existente.
+3. Diseño conceptual del núcleo agrícola sin implementar código.
+4. Validación arquitectónica y aprobación explícita del usuario.
+5. Implementación incremental con migraciones y pruebas.
+
+La intención productiva del sistema es la trazabilidad completa del café desde finca hasta venta y rentabilidad. La línea de trazabilidad principal es:
+
+Farm → Lot → CropCycle → AgriculturalActivity → Harvest → ProductionBatch → QualityAssessment → InventoryMovement → Sale → FinancialTransaction
+
+En v1, el diseño debe ser simple y mantenible. No crear modelos paralelos para fertilización, deshierbe, fumigación, enfermedades o tareas si pueden representarse con entidades generales y relaciones consistentes.
+
+Reglas obligatorias:
+- No crear modelos agrícolas ni migraciones sin una auditoría previa y aprobación del diseño.
+- No duplicar fuentes de verdad: `Product`, `InventoryMovement`, `Sale`, `Expense` y `MonthlySummary` deben seguir siendo la base del sistema financiero e inventario.
+- No crear una segunda contabilidad ni inventario agrícola paralelo al que ya existe.
+- Mantener nombres técnicos heredados como `kaboha_finance` a menos que exista una decisión explícita de renombrado.
+- Reutilizar el inventario actual para café cereza, pergamino, verde, tostado y molido mediante movimientos y trazabilidad.
+- Diseñar primero las entidades core: `Farm`, `Lot`, `CropCycle`, `AgriculturalActivity`, `ActivityInput`, `ActivityLabor`, `Harvest`, `ProductionBatch`, `QualityAssessment`, `HealthObservation`, `Task`.
+- Documentar antes de cada implementación: propósito, responsabilidad, relaciones, campos, reglas, fuente de verdad, y datos calculados.
+
+## Dominio agrícola aprobado para v1
+
+El núcleo agrícola debe basarse en las siguientes entidades conceptuales:
+
+- Farm: finca o unidad productiva.
+- Lot: unidad física/productiva dentro de una finca.
+- CropCycle: ciclo de cultivo y datos específicos del cultivo.
+- AgriculturalActivity: actividad agrícola genérica con tipo y contexto.
+- ActivityInput: insumo consumido en una actividad.
+- ActivityLabor: mano de obra asociada a la actividad.
+- Harvest: café recolectado.
+- ProductionBatch: transformación / proceso de producción asociado a una cosecha.
+- QualityAssessment: evaluaciones de calidad del café.
+- HealthObservation: registro sanitario y observaciones del cultivo.
+- Task: sistema transversal de tareas con estados mínimos.
+
+No crear modelos de tipos de actividades separados por nombre (fertilización, mantenimiento, poda, etc.) como entidades independientes; la relación debe generalizarse con `AgriculturalActivity` y su tipo.
+
+## Reglas de diseño y seguridad
+
+- Registrar cada dato una sola vez y reutilizarlo en todo el sistema.
+- No crear lógica, servicios, vistas o formularios redundantes si ya existe una solución equivalente.
+- Mantener una sola fuente de verdad para inventario, costos, ventas y finanzas.
+- Evitar cálculos redundantes, duplicados y tablas que repitan información ya derivada.
+- No implementar IA, diagnósticos automáticos, predicción climática o automatizaciones complejas en v1.
+- Mantener permisos por usuario, aislamiento de datos y validación de entrada en backend.
+
 ## Alcance actual del dominio
 
 Usuarios objetivo:

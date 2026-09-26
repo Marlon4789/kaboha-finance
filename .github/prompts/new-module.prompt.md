@@ -18,6 +18,32 @@ Act as the Cafena principal architect and handle the requested module or domain 
 8. UI/UX
 9. REVISIÓN FINAL
 
+## Agricultural v1 gate
+
+For the agricultural domain, the required core entities are:
+
+- Farm
+- Lot
+- CropCycle
+- AgriculturalActivity
+- ActivityInput
+- ActivityLabor
+- Harvest
+- ProductionBatch
+- QualityAssessment
+- HealthObservation
+- Task
+
+The proposal must first explain:
+
+- what exists today in the Django project and what can be reused;
+- which source of truth each data point belongs to;
+- how the design avoids duplication with `Product`, `InventoryMovement`, `Sale`, `Expense`, and `MonthlySummary`;
+- why a new entity is necessary and what trade-offs it creates;
+- the migration and compatibility risks.
+
+Do not create models, migrations, or production code for the agricultural domain before the architecture proposal is reviewed and approved.
+
 ## Gate before implementation
 
 Before editing, inspect existing models, relationships, migrations, views, forms, URLs, templates, tests, and relevant skills. Confirm that the requested entity or behavior does not already exist. Define the owning app, business rules, workflow, schema impact, source-of-truth data, derived data, security implications, and test strategy.
