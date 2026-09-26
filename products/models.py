@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -101,9 +102,15 @@ class Product(models.Model):
             return
         from sales.models import SaleItem
 
-        if SaleItem.objects.filter(product_id=self.pk).exists():
+        has_sales = SaleItem.objects.filter(product_id=self.pk).exists()
+        InventoryMovement = apps.get_model('inventory', 'InventoryMovement')
+        has_inventory_movements = InventoryMovement.objects.filter(product_id=self.pk).exists()
+        if has_sales or has_inventory_movements:
             raise ValidationError({
-                'base_unit': 'No se puede cambiar la unidad base después de vender el producto; crea otro producto.',
+                'base_unit': (
+                    'No se puede cambiar la unidad base después de registrar ventas o movimientos '
+                    'de inventario; crea otro producto.'
+                ),
             })
 
     def clean(self):

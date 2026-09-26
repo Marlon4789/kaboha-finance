@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from .models import Product
 
 
@@ -168,3 +169,70 @@ class ProductCatalogTests(TestCase):
                 'sale_price', 'production_cost', 'active',
             },
         )
+
+
+class ProductBaseUnitHistoryTests(TestCase):
+    def build_product(self, *, is_sellable=False):
+        return Product.objects.create(
+            name='Producto unidad base',
+            item_type=Product.ItemType.COFFEE if is_sellable else Product.ItemType.OTHER,
+            coffee_stage=Product.CoffeeStage.GROUND if is_sellable else None,
+            base_unit=Product.BaseUnit.G,
+            sale_unit_quantity=Decimal('250') if is_sellable else None,
+            is_sellable=is_sellable,
+            is_stock_tracked=True,
+            sale_price=Decimal('10000') if is_sellable else None,
+            production_cost=0,
+        )
+
+    def assert_base_unit_change_rejected(self, product):
+        product.base_unit = Product.BaseUnit.ML
+        with self.assertRaises(ValidationError):
+            product.save(update_fields=['base_unit'])
+
+    def test_base_unit_can_change_without_sales_or_inventory_history(self):
+        product = self.build_product()
+
+        product.base_unit = Product.BaseUnit.ML
+        product.save(update_fields=['base_unit'])
+        product.refresh_from_db()
+
+        self.assertEqual(product.base_unit, Product.BaseUnit.ML)
+
+    def test_base_unit_cannot_change_after_sales(self):
+        from sales.models import Sale, SaleItem
+
+        product = self.build_product(is_sellable=True)
+        sale = Sale.objects.create(payment_method='Efectivo')
+        SaleItem.objects.create(sale=sale, product=product, quantity=1, unit_price=10000)
+
+        self.assert_base_unit_change_rejected(product)
+
+    def test_base_unit_cannot_change_after_inventory_movement(self):
+        from inventory.models import InventoryMovement
+
+        product = self.build_product()
+        InventoryMovement.objects.create(
+            product=product,
+            movement_type=InventoryMovement.MovementType.OPENING_BALANCE_IN,
+            quantity=Decimal('1000'),
+            occurred_at=timezone.now(),
+        )
+
+        self.assert_base_unit_change_rejected(product)
+
+    def test_base_unit_cannot_change_after_both_sales_and_inventory_movement(self):
+        from inventory.models import InventoryMovement
+        from sales.models import Sale, SaleItem
+
+        product = self.build_product(is_sellable=True)
+        sale = Sale.objects.create(payment_method='Efectivo')
+        SaleItem.objects.create(sale=sale, product=product, quantity=1, unit_price=10000)
+        InventoryMovement.objects.create(
+            product=product,
+            movement_type=InventoryMovement.MovementType.OPENING_BALANCE_IN,
+            quantity=Decimal('1000'),
+            occurred_at=timezone.now(),
+        )
+
+        self.assert_base_unit_change_rejected(product)
