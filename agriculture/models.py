@@ -412,3 +412,165 @@ class QualityAssessment(models.Model):
 
     def __str__(self):
         return f'{self.production_batch.code} - {self.assessed_on}'
+
+class HealthObservation(models.Model):
+    class Severity(models.TextChoices):
+        LOW = 'LOW', _('Baja')
+        MEDIUM = 'MEDIUM', _('Media')
+        HIGH = 'HIGH', _('Alta')
+        CRITICAL = 'CRITICAL', _('Crítica')
+
+    crop_cycle = models.ForeignKey(
+        CropCycle,
+        on_delete=models.PROTECT,
+        related_name='health_observations',
+        verbose_name=_('ciclo de cultivo'),
+    )
+    observed_on = models.DateField(_('fecha de observación'))
+    problem = models.CharField(_('problema observado'), max_length=200)
+    severity = models.CharField(_('severidad'), max_length=8, choices=Severity.choices)
+    observation = models.TextField(_('observación'))
+    action_taken = models.TextField(_('acción realizada'), blank=True)
+    next_review_on = models.DateField(_('próxima revisión'), null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='created_health_observations',
+        verbose_name=_('creado por'),
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ['-observed_on', '-pk']
+        verbose_name = _('observación sanitaria')
+        verbose_name_plural = _('observaciones sanitarias')
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(next_review_on__isnull=True) | Q(next_review_on__gte=F('observed_on')),
+                name='agri_health_review_on_or_after_observed',
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.next_review_on and self.observed_on and self.next_review_on < self.observed_on:
+            raise ValidationError({
+                'next_review_on': _('La próxima revisión no puede ser anterior a la observación.'),
+            })
+        if not (self.problem or '').strip():
+            raise ValidationError({'problem': _('Este campo es obligatorio.')})
+
+    def __str__(self):
+        return f'{self.problem} - {self.crop_cycle} ({self.observed_on})'
+
+
+class Task(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', _('Pendiente')
+        IN_PROGRESS = 'IN_PROGRESS', _('En progreso')
+        DONE = 'DONE', _('Terminada')
+        CANCELLED = 'CANCELLED', _('Cancelada')
+
+    class Priority(models.TextChoices):
+        LOW = 'LOW', _('Baja')
+        NORMAL = 'NORMAL', _('Normal')
+        HIGH = 'HIGH', _('Alta')
+
+    title = models.CharField(_('título'), max_length=200)
+    description = models.TextField(_('descripción'), blank=True)
+    status = models.CharField(_('estado'), max_length=12, choices=Status.choices, default=Status.PENDING)
+    priority = models.CharField(_('prioridad'), max_length=6, choices=Priority.choices, default=Priority.NORMAL)
+    farm = models.ForeignKey(
+        Farm,
+        on_delete=models.PROTECT,
+        related_name='tasks',
+        verbose_name=_('finca'),
+        null=True,
+        blank=True,
+    )
+    lot = models.ForeignKey(
+        Lot,
+        on_delete=models.PROTECT,
+        related_name='tasks',
+        verbose_name=_('lote'),
+        null=True,
+        blank=True,
+    )
+    crop_cycle = models.ForeignKey(
+        CropCycle,
+        on_delete=models.PROTECT,
+        related_name='tasks',
+        verbose_name=_('ciclo de cultivo'),
+        null=True,
+        blank=True,
+    )
+    activity = models.ForeignKey(
+        AgriculturalActivity,
+        on_delete=models.PROTECT,
+        related_name='tasks',
+        verbose_name=_('actividad agrícola'),
+        null=True,
+        blank=True,
+    )
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='assigned_agricultural_tasks',
+        verbose_name=_('asignada a'),
+        null=True,
+        blank=True,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='created_agricultural_tasks',
+        verbose_name=_('creada por'),
+        null=True,
+        blank=True,
+    )
+    due_on = models.DateField(_('fecha límite'), null=True, blank=True)
+    completed_at = models.DateTimeField(_('fecha de finalización'), null=True, blank=True)
+    created_at = models.DateTimeField(_('creada'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('actualizada'), auto_now=True)
+
+    class Meta:
+        ordering = ['due_on', '-priority', '-created_at']
+        verbose_name = _('tarea')
+        verbose_name_plural = _('tareas')
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (Q(farm__isnull=True) | Q(lot__isnull=True))
+                    & (Q(farm__isnull=True) | Q(crop_cycle__isnull=True))
+                    & (Q(farm__isnull=True) | Q(activity__isnull=True))
+                    & (Q(lot__isnull=True) | Q(crop_cycle__isnull=True))
+                    & (Q(lot__isnull=True) | Q(activity__isnull=True))
+                    & (Q(crop_cycle__isnull=True) | Q(activity__isnull=True))
+                ),
+                name='agri_task_at_most_one_context',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(status='DONE', completed_at__isnull=False)
+                    | (~Q(status='DONE') & Q(completed_at__isnull=True))
+                ),
+                name='agri_task_completion_matches_status',
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        contexts = ('farm', 'lot', 'crop_cycle', 'activity')
+        selected_contexts = [name for name in contexts if getattr(self, f'{name}_id')]
+        if len(selected_contexts) > 1:
+            raise ValidationError(_('Una tarea puede tener como máximo un contexto.'))
+        if not (self.title or '').strip():
+            raise ValidationError({'title': _('Este campo es obligatorio.')})
+        if self.status == self.Status.DONE and self.completed_at is None:
+            raise ValidationError({'completed_at': _('Una tarea terminada debe tener fecha de finalización.')})
+        if self.status != self.Status.DONE and self.completed_at is not None:
+            raise ValidationError({'completed_at': _('Solo una tarea terminada puede tener fecha de finalización.')})
+
+    def __str__(self):
+        return self.title

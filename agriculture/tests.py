@@ -10,7 +10,7 @@ from products.models import Product
 
 from .models import (
     AgriculturalActivity, ActivityInput, ActivityLabor, CropCycle, Farm, Harvest, Lot,
-    ProductionBatch, QualityAssessment,
+    HealthObservation, ProductionBatch, QualityAssessment, Task,
 )
 
 
@@ -444,3 +444,229 @@ class HarvestProductionQualityTests(TestCase):
 
         with self.assertRaises(ProtectedError):
             batch.delete()
+
+class HealthObservationAndTaskTests(TestCase):
+    def setUp(self):
+        from datetime import datetime
+        from django.utils import timezone
+
+        self.user = get_user_model().objects.create_user(username='phase5-user', password='test-password')
+        self.farm = Farm.objects.create(owner=self.user, name='Finca Fase 5')
+        self.lot = Lot.objects.create(farm=self.farm, code='P5-01', name='Lote Fase 5', area_ha=Decimal('1.0000'))
+        self.cycle = CropCycle.objects.create(
+            lot=self.lot,
+            cycle_type=CropCycle.CycleType.NEW,
+            start_date='2024-01-01',
+        )
+        self.activity = AgriculturalActivity.objects.create(
+            crop_cycle=self.cycle,
+            activity_type=AgriculturalActivity.ActivityType.FERTILIZATION,
+            performed_on='2024-02-01',
+        )
+        self.completed_at = timezone.make_aware(datetime(2024, 3, 1, 12, 0))
+
+    def test_health_observation_creation_relation_severity_and_dates(self):
+        record = HealthObservation.objects.create(
+            crop_cycle=self.cycle,
+            observed_on='2024-03-01',
+            problem='Roya',
+            severity=HealthObservation.Severity.MEDIUM,
+            observation='Síntomas en varias plantas.',
+            action_taken='Realizar seguimiento.',
+            next_review_on='2024-03-15',
+            created_by=self.user,
+        )
+
+        self.assertEqual(record.crop_cycle, self.cycle)
+        self.assertEqual(self.cycle.health_observations.get(), record)
+        self.assertEqual(record.severity, HealthObservation.Severity.MEDIUM)
+        self.assertEqual(record.created_by, self.user)
+        self.assertEqual(str(record.next_review_on), '2024-03-15')
+
+    def test_health_observation_all_severity_choices_are_valid(self):
+        for severity in HealthObservation.Severity.values:
+            with self.subTest(severity=severity):
+                record = HealthObservation(
+                    crop_cycle=self.cycle,
+                    observed_on='2024-03-01',
+                    problem='Observación',
+                    severity=severity,
+                    observation='Registro',
+                )
+                record.full_clean()
+
+    def test_health_observation_problem_is_required(self):
+        record = HealthObservation(
+            crop_cycle=self.cycle,
+            observed_on='2024-03-01',
+            problem='   ',
+            severity=HealthObservation.Severity.LOW,
+            observation='Registro',
+        )
+
+        with self.assertRaises(ValidationError):
+            record.full_clean()
+
+    def test_health_observation_review_date_may_equal_or_follow_observation(self):
+        record = HealthObservation(
+            crop_cycle=self.cycle,
+            observed_on='2024-03-01',
+            problem='Broca',
+            severity=HealthObservation.Severity.LOW,
+            observation='Registro',
+            next_review_on='2024-03-01',
+        )
+        record.full_clean()
+        record.next_review_on = '2024-03-02'
+        record.full_clean()
+
+    def test_health_observation_rejects_review_before_observation(self):
+        record = HealthObservation(
+            crop_cycle=self.cycle,
+            observed_on='2024-03-02',
+            problem='Broca',
+            severity=HealthObservation.Severity.LOW,
+            observation='Registro',
+            next_review_on='2024-03-01',
+        )
+        with self.assertRaises(ValidationError):
+            record.full_clean()
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                record.save()
+
+    def test_health_observation_protects_crop_cycle(self):
+        isolated_lot = Lot.objects.create(
+            farm=self.farm, code='P5-HEALTH', name='Lote sanitario', area_ha=Decimal('1.0000'),
+        )
+        isolated_cycle = CropCycle.objects.create(
+            lot=isolated_lot, cycle_type=CropCycle.CycleType.NEW, start_date='2024-01-01',
+        )
+        HealthObservation.objects.create(
+            crop_cycle=isolated_cycle,
+            observed_on='2024-03-01',
+            problem='Roya',
+            severity=HealthObservation.Severity.MEDIUM,
+            observation='Registro',
+        )
+
+        with self.assertRaises(ProtectedError):
+            self.cycle.delete()
+
+    def test_task_can_be_created_without_context(self):
+        task = Task.objects.create(title='Comprar herramientas')
+
+        self.assertIsNone(task.farm)
+        self.assertIsNone(task.lot)
+        self.assertIsNone(task.crop_cycle)
+        self.assertIsNone(task.activity)
+        self.assertEqual(task.status, Task.Status.PENDING)
+        self.assertEqual(task.priority, Task.Priority.NORMAL)
+
+    def test_task_accepts_each_single_context(self):
+        isolated_farm = Farm.objects.create(owner=self.user, name='Finca sin dependencias')
+        isolated_lot = Lot.objects.create(
+            farm=isolated_farm, code='P5-LOT', name='Lote sin dependencias', area_ha=Decimal('1.0000'),
+        )
+        cases = (
+            ('Finca', {'farm': self.farm}),
+            ('Lote', {'lot': isolated_lot}),
+            ('Ciclo', {'crop_cycle': self.cycle}),
+            ('Actividad', {'activity': self.activity}),
+        )
+        for title, context in cases:
+            with self.subTest(context=title):
+                task = Task.objects.create(title=f'Tarea {title}', **context)
+                self.assertEqual(sum(bool(getattr(task, f'{field}_id')) for field in ('farm', 'lot', 'crop_cycle', 'activity')), 1)
+
+    def test_task_rejects_multiple_contexts_in_model_and_database(self):
+        task = Task(title='Contexto ambiguo', farm=self.farm, lot=self.lot)
+
+        with self.assertRaises(ValidationError):
+            task.full_clean()
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                task.save()
+
+    def test_task_accepts_all_status_and_priority_choices(self):
+        for status in Task.Status.values:
+            for priority in Task.Priority.values:
+                with self.subTest(status=status, priority=priority):
+                    task = Task(
+                        title=f'{status}-{priority}',
+                        status=status,
+                        priority=priority,
+                        completed_at=self.completed_at if status == Task.Status.DONE else None,
+                    )
+                    task.full_clean()
+
+    def test_task_rejects_invalid_status_and_priority(self):
+        invalid_status = Task(title='Estado inválido', status='UNKNOWN')
+        with self.assertRaises(ValidationError):
+            invalid_status.full_clean()
+
+        invalid_priority = Task(title='Prioridad inválida', priority='URGENT')
+        with self.assertRaises(ValidationError):
+            invalid_priority.full_clean()
+
+    def test_task_completion_timestamp_must_match_done_status(self):
+        unfinished_with_timestamp = Task(title='Pendiente con fecha', completed_at=self.completed_at)
+        with self.assertRaises(ValidationError):
+            unfinished_with_timestamp.full_clean()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                unfinished_with_timestamp.save()
+
+        done_without_timestamp = Task(title='Terminada sin fecha', status=Task.Status.DONE)
+        with self.assertRaises(ValidationError):
+            done_without_timestamp.full_clean()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                done_without_timestamp.save()
+
+    def test_task_done_status_accepts_completion_timestamp(self):
+        task = Task.objects.create(title='Tarea terminada', status=Task.Status.DONE, completed_at=self.completed_at)
+
+        self.assertEqual(task.status, Task.Status.DONE)
+        self.assertEqual(task.completed_at, self.completed_at)
+
+    def test_task_supports_optional_assignee_and_creator_users(self):
+        task = Task.objects.create(title='Tarea asignada', assigned_to=self.user, created_by=self.user)
+
+        self.assertEqual(task.assigned_to, self.user)
+        self.assertEqual(task.created_by, self.user)
+        self.assertIn(task, self.user.assigned_agricultural_tasks.all())
+        self.assertIn(task, self.user.created_agricultural_tasks.all())
+
+    def test_task_protects_context_relations_from_deletion(self):
+        task_farm = Farm.objects.create(owner=self.user, name='Finca tarea protegida')
+        farm_task = Task.objects.create(title='Contexto finca', farm=task_farm)
+        with self.assertRaises(ProtectedError):
+            task_farm.delete()
+        farm_task.delete()
+
+        task_lot = Lot.objects.create(
+            farm=self.farm, code='P5-TASK', name='Lote tarea protegida', area_ha=Decimal('1.0000'),
+        )
+        lot_task = Task.objects.create(title='Contexto lote', lot=task_lot)
+        with self.assertRaises(ProtectedError):
+            task_lot.delete()
+        lot_task.delete()
+
+        cycle_lot = Lot.objects.create(
+            farm=self.farm, code='P5-CYCLE', name='Lote para ciclo', area_ha=Decimal('1.0000'),
+        )
+        isolated_cycle = CropCycle.objects.create(
+            lot=cycle_lot, cycle_type=CropCycle.CycleType.NEW, start_date='2024-01-01',
+        )
+        cycle_task = Task.objects.create(title='Contexto ciclo', crop_cycle=isolated_cycle)
+        with self.assertRaises(ProtectedError):
+            isolated_cycle.delete()
+        cycle_task.delete()
+
+        activity_task = Task.objects.create(title='Contexto actividad', activity=self.activity)
+        with self.assertRaises(ProtectedError):
+            self.activity.delete()
+        activity_task.delete()

@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     AgriculturalActivity, ActivityInput, ActivityLabor, CropCycle, Farm, Harvest, Lot,
-    ProductionBatch, QualityAssessment,
+    HealthObservation, ProductionBatch, QualityAssessment, Task,
 )
 
 
@@ -67,3 +67,17 @@ class QualityAssessmentAdmin(admin.ModelAdmin):
     list_display = ('production_batch', 'assessed_on', 'moisture_pct', 'defects_pct', 'broca_pct', 'score')
     list_filter = ('assessed_on',)
     search_fields = ('production_batch__code', 'notes')
+
+
+@admin.register(HealthObservation)
+class HealthObservationAdmin(admin.ModelAdmin):
+    list_display = ('crop_cycle', 'observed_on', 'problem', 'severity', 'next_review_on', 'created_by')
+    list_filter = ('severity', 'observed_on')
+    search_fields = ('problem', 'observation', 'action_taken', 'crop_cycle__lot__farm__name')
+
+
+@admin.register(Task)
+class TaskAdmin(admin.ModelAdmin):
+    list_display = ('title', 'status', 'priority', 'due_on', 'assigned_to', 'created_by')
+    list_filter = ('status', 'priority', 'due_on')
+    search_fields = ('title', 'description')
