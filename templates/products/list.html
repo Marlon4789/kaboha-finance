@@ -15,7 +15,7 @@
             <thead class="table-light">
                 <tr>
                     <th>Nombre</th>
-                    <th>Peso</th>
+                    <th>Contenido</th>
                     <th>Precio</th>
                     <th>Costo</th>
                     <th>Ganancia</th>
@@ -28,7 +28,7 @@
                 {% for product in products %}
                     <tr>
                         <td>{{ product.name }}</td>
-                        <td>{{ product.weight_grams|co_grams }}</td>
+                        <td>{{ product.sale_unit_quantity|default_if_none:"—" }} {{ product.get_base_unit_display|default:"" }}</td>
                         <td>{{ product.sale_price|co_currency }}</td>
                         <td>{{ product.production_cost|co_currency }}</td>
                         <td>{{ product.profit_per_unit|co_currency }}</td>

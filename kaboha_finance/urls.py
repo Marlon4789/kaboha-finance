@@ -10,5 +10,6 @@ urlpatterns = [
     path('sales/', include('sales.urls')),
     path('expenses/', include('expenses.urls')),
     path('inventory/', include('inventory.urls')),
+    path('agriculture/', include('agriculture.urls')),
     path('dashboard/export/xlsx/<int:year>/<int:month>/', export_month_xlsx, name='dashboard_export_month_xlsx'),
 ]

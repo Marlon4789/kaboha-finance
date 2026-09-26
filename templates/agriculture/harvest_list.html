@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }}" role="alert">{{ message }}</div>
+    {% endfor %}
+{% endif %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0">Cosechas</h1>
+        <p class="text-muted mb-0">Las cosechas pendientes aún no han ingresado al inventario.</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'harvest_create' %}">Nueva cosecha</a>
+</div>
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Fecha</th>
+                    <th>Finca</th>
+                    <th>Lote</th>
+                    <th>Ciclo</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for harvest in harvests %}
+                    <tr>
+                        <td>{{ harvest.harvested_on }}</td>
+                        <td>{{ harvest.crop_cycle.lot.farm.name }}</td>
+                        <td>{{ harvest.crop_cycle.lot.code }}</td>
+                        <td>{{ harvest.crop_cycle }}</td>
+                        <td>
+                            {% if harvest.inventory_movement_id %}
+                                Registrada en inventario
+                            {% else %}
+                                Pendiente de registro
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not harvest.inventory_movement_id %}
+                                <a class="btn btn-outline-primary btn-sm" href="{% url 'harvest_inventory_register' harvest.pk %}">Registrar cantidad</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6" class="text-center text-muted">Aún no hay cosechas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

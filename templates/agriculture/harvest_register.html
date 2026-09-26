@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }}" role="alert">{{ message }}</div>
+    {% endfor %}
+{% endif %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h1 class="h4 mb-2">Confirmar cosecha en inventario</h1>
+                <p><strong>Finca:</strong> {{ harvest.crop_cycle.lot.farm.name }}<br>
+                   <strong>Lote:</strong> {{ harvest.crop_cycle.lot.code }}<br>
+                   <strong>Ciclo:</strong> {{ harvest.crop_cycle }}<br>
+                   <strong>Fecha:</strong> {{ harvest.harvested_on }}<br>
+                   <strong>Notas:</strong> {{ harvest.notes|default:'—' }}</p>
+                <p class="text-muted">La cantidad en kg se convertirá a gramos. No se asignará un costo agrícola automáticamente.</p>
+                {% if not has_cherry_products %}
+                    <div class="alert alert-warning" role="alert">
+                        No hay productos elegibles. Crea explícitamente un producto de tipo Café, etapa Cereza,
+                        unidad base G y control de inventario activo en Productos; no se creará automáticamente.
+                    </div>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form.as_p }}
+                    <button class="btn btn-primary" type="submit">Confirmar e ingresar al inventario</button>
+                    <a class="btn btn-secondary" href="{% url 'harvest_list' %}">Cancelar</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
