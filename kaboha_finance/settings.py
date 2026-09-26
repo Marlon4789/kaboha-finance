@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'sales',
     'expenses',
     'inventory',
+    'agriculture.apps.AgricultureConfig',
 ]
 
 MIDDLEWARE = [
