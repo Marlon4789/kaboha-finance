@@ -92,8 +92,8 @@ def home(request):
     margin_month = (profit_month / sales_total_month * 100) if sales_total_month else 0
     margin_year = (profit_year / sales_total_year * 100) if sales_total_year else 0
 
-    kilograms_sold_month = monthly_sales.aggregate(total_grams=Sum(F('product__weight_grams') * F('quantity'), output_field=FloatField()))['total_grams'] or 0
-    kilograms_sold_year = sales_items.aggregate(total_grams=Sum(F('product__weight_grams') * F('quantity'), output_field=FloatField()))['total_grams'] or 0
+    kilograms_sold_month = monthly_sales.filter(product__base_unit=Product.BaseUnit.G).aggregate(total_grams=Sum(F('unit_quantity_base_snapshot') * F('quantity'), output_field=FloatField()))['total_grams'] or 0
+    kilograms_sold_year = sales_items.filter(product__base_unit=Product.BaseUnit.G).aggregate(total_grams=Sum(F('unit_quantity_base_snapshot') * F('quantity'), output_field=FloatField()))['total_grams'] or 0
 
     sales_count_month = monthly_sales.values('sale').distinct().count()
     average_ticket = (sales_total_month / sales_count_month) if sales_count_month else 0
@@ -122,7 +122,7 @@ def home(request):
         period_expenses = expenses_year.filter(date__year=year, date__month=month)
         sales_history.append(period_sales.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0)
         expenses_history.append(period_expenses.aggregate(total=Sum('amount'))['total'] or 0)
-        kg_history.append((period_sales.aggregate(total_grams=Sum(F('product__weight_grams') * F('quantity'), output_field=FloatField()))['total_grams'] or 0) / 1000)
+        kg_history.append((period_sales.filter(product__base_unit=Product.BaseUnit.G).aggregate(total_grams=Sum(F('unit_quantity_base_snapshot') * F('quantity'), output_field=FloatField()))['total_grams'] or 0) / 1000)
 
     categories = ExpenseCategory.objects.all()
     expense_distribution = []
@@ -138,14 +138,16 @@ def home(request):
         month_bags=Sum('bags_added'),
         month_kilos=Sum('kilos_added'),
     )
-    sold_totals = SaleItem.objects.aggregate(
-        sold_bags=Sum('quantity'),
-        sold_kilos=Sum(F('quantity') * F('product__weight_grams') / 1000.0, output_field=FloatField()),
-    )
-    sold_monthly = SaleItem.objects.filter(sale__sale_date__gte=first_day_month).aggregate(
-        sold_bags=Sum('quantity'),
-        sold_kilos=Sum(F('quantity') * F('product__weight_grams') / 1000.0, output_field=FloatField()),
-    )
+    sold_totals = SaleItem.objects.aggregate(sold_bags=Sum('quantity'))
+    sold_totals.update(SaleItem.objects.filter(product__base_unit=Product.BaseUnit.G).aggregate(
+        sold_kilos=Sum(F('quantity') * F('unit_quantity_base_snapshot') / 1000.0, output_field=FloatField()),
+    ))
+    sold_monthly = SaleItem.objects.filter(sale__sale_date__gte=first_day_month).aggregate(sold_bags=Sum('quantity'))
+    sold_monthly.update(SaleItem.objects.filter(
+        sale__sale_date__gte=first_day_month, product__base_unit=Product.BaseUnit.G,
+    ).aggregate(
+        sold_kilos=Sum(F('quantity') * F('unit_quantity_base_snapshot') / 1000.0, output_field=FloatField()),
+    ))
 
     total_bags = inventory_totals['total_bags'] or 0
     total_kilos = inventory_totals['total_kilos'] or 0

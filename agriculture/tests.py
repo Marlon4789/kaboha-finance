@@ -147,6 +147,11 @@ class AgriculturalActivityTests(TestCase):
         self.product = Product.objects.create(
             name='Fertilizante prueba',
             description='',
+            item_type=Product.ItemType.AGRICULTURAL_INPUT,
+            coffee_stage=None,
+            base_unit=Product.BaseUnit.G,
+            is_sellable=False,
+            is_stock_tracked=True,
             weight_grams=1000,
             sale_price=10000,
             production_cost=5000,

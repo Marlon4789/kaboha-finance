@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django import template
 
 register = template.Library()
@@ -6,20 +8,29 @@ register = template.Library()
 @register.filter
 def co_currency(value):
     try:
-        amount = int(value)
-    except (ValueError, TypeError):
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
         return value
-    formatted = f"${amount:,.0f} COP".replace(',', '.')
-    return formatted
+    if amount == amount.to_integral_value():
+        formatted = f'{int(amount):,}'.replace(',', '.')
+        return f'${formatted} COP'
+    formatted = f'{amount:,.2f}'
+    formatted = formatted.replace(',', '@').replace('.', ',').replace('@', '.')
+    return f'${formatted} COP'
 
 
 @register.filter
 def co_grams(value):
     try:
-        grams = int(value)
-    except (ValueError, TypeError):
+        grams = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
         return value
-    return f'{grams:,}'.replace(',', '.') + ' g'
+    if grams == grams.to_integral_value():
+        formatted = f'{int(grams):,}'.replace(',', '.')
+    else:
+        formatted = f'{grams:,.3f}'.rstrip('0').rstrip('.')
+        formatted = formatted.replace(',', '@').replace('.', ',').replace('@', '.')
+    return f'{formatted} g'
 
 
 @register.filter

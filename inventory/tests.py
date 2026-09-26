@@ -26,6 +26,12 @@ class InventoryTests(TestCase):
         product = Product.objects.create(
             name='Café Test',
             description='Café para prueba',
+            item_type=Product.ItemType.COFFEE,
+            coffee_stage=Product.CoffeeStage.GROUND,
+            base_unit=Product.BaseUnit.G,
+            is_sellable=True,
+            is_stock_tracked=True,
+            sale_unit_quantity=500,
             weight_grams=500,
             sale_price=20000,
             production_cost=10000,

@@ -24,14 +24,16 @@ def inventory_list(request):
         month_kilos_pergamino=Sum('kilos_pergamino'),
     )
 
-    sold_totals = SaleItem.objects.aggregate(
-        sold_bags=Sum('quantity'),
-        sold_kilos=Sum(F('quantity') * F('product__weight_grams') / 1000.0, output_field=FloatField()),
-    )
-    sold_monthly = SaleItem.objects.filter(sale__sale_date__gte=first_day_month).aggregate(
-        sold_bags=Sum('quantity'),
-        sold_kilos=Sum(F('quantity') * F('product__weight_grams') / 1000.0, output_field=FloatField()),
-    )
+    sold_totals = SaleItem.objects.aggregate(sold_bags=Sum('quantity'))
+    sold_totals.update(SaleItem.objects.filter(product__base_unit='G').aggregate(
+        sold_kilos=Sum(F('quantity') * F('unit_quantity_base_snapshot') / 1000.0, output_field=FloatField()),
+    ))
+    sold_monthly = SaleItem.objects.filter(sale__sale_date__gte=first_day_month).aggregate(sold_bags=Sum('quantity'))
+    sold_monthly.update(SaleItem.objects.filter(
+        sale__sale_date__gte=first_day_month, product__base_unit='G',
+    ).aggregate(
+        sold_kilos=Sum(F('quantity') * F('unit_quantity_base_snapshot') / 1000.0, output_field=FloatField()),
+    ))
 
     total_bags = totals['total_bags'] or 0
     total_kilos = totals['total_kilos'] or 0
