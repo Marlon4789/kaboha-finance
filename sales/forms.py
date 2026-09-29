@@ -12,6 +12,10 @@ class SaleForm(forms.ModelForm):
         }
 
 
+class SaleCreateForm(SaleForm):
+    operation_key = forms.UUIDField(widget=forms.HiddenInput)
+
+
 SaleItemFormSet = inlineformset_factory(
     Sale,
     SaleItem,

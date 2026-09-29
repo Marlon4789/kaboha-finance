@@ -65,6 +65,12 @@ class InventoryMovement(models.Model):
         blank=True,
         validators=[MinValueValidator(0)],
     )
+    operation_key = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text='Clave idempotente para operaciones excepcionales y auditables.',
+    )
     expense = models.ForeignKey(
         'expenses.Expense', on_delete=models.PROTECT, related_name='inventory_movements',
         null=True, blank=True,
@@ -120,6 +126,11 @@ class InventoryMovement(models.Model):
             models.CheckConstraint(
                 condition=~Q(movement_type__in=INVENTORY_ADJUSTMENT_TYPES) | ~Q(reason=''),
                 name='inv_move_adjustment_reason',
+            ),
+            models.UniqueConstraint(
+                fields=['operation_key'],
+                condition=Q(operation_key__isnull=False),
+                name='inv_move_operation_key_unique_when_set',
             ),
         ]
         indexes = [

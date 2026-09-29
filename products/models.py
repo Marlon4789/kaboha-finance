@@ -52,6 +52,8 @@ class Product(models.Model):
     )
     # Historical system cost; it is not the future inventory traceability costing model.
     production_cost = models.PositiveIntegerField(
+        null=True,
+        blank=True,
         help_text='Costo histórico/transicional del sistema; no es el costeo basado en inventario y trazabilidad.',
     )
     active = models.BooleanField(default=True)
@@ -136,7 +138,7 @@ class Product(models.Model):
 
     @property
     def profit_per_unit(self):
-        if self.sale_price is None:
+        if self.sale_price is None or self.production_cost is None:
             return None
         return self.sale_price - self.production_cost
 

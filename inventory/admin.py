@@ -5,9 +5,19 @@ from .models import InventoryEntry, InventoryMovement
 
 @admin.register(InventoryEntry)
 class InventoryEntryAdmin(admin.ModelAdmin):
-    list_display = ('date', 'bags_added', 'kilos_added', 'created_at')
+    list_display = ('date', 'bags_added', 'kilos_added', 'kilos_pergamino', 'created_at')
     list_filter = ('date',)
     search_fields = ('notes',)
+    readonly_fields = tuple(field.name for field in InventoryEntry._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(InventoryMovement)

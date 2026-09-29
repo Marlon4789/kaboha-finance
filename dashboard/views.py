@@ -6,7 +6,7 @@ from django.utils import timezone
 from sales.models import SaleItem
 from expenses.models import Expense, ExpenseCategory
 from products.models import Product
-from inventory.models import InventoryEntry
+from inventory.services import InventoryService
 from .models import MonthlySummary
 from django.http import HttpResponse
 import csv
@@ -55,11 +55,6 @@ def home(request):
         (expense_date.year, expense_date.month)
         for expense_date in Expense.objects.values_list('date', flat=True)
         if expense_date and (expense_date.year, expense_date.month) <= (today.year, today.month)
-    )
-    available_periods.update(
-        (entry_date.year, entry_date.month)
-        for entry_date in InventoryEntry.objects.values_list('date', flat=True)
-        if entry_date and (entry_date.year, entry_date.month) <= (today.year, today.month)
     )
     available_periods.add((today.year, today.month))
     available_periods = sorted(available_periods, reverse=True)
@@ -130,36 +125,26 @@ def home(request):
         total = monthly_expenses.filter(category=category).aggregate(total=Sum('amount'))['total'] or 0
         expense_distribution.append({'name': category.name, 'total': total})
 
-    inventory_totals = InventoryEntry.objects.aggregate(
-        total_bags=Sum('bags_added'),
-        total_kilos=Sum('kilos_added'),
-    )
-    inventory_month = InventoryEntry.objects.filter(date__gte=first_day_month).aggregate(
-        month_bags=Sum('bags_added'),
-        month_kilos=Sum('kilos_added'),
-    )
-    sold_totals = SaleItem.objects.aggregate(sold_bags=Sum('quantity'))
-    sold_totals.update(SaleItem.objects.filter(product__base_unit=Product.BaseUnit.G).aggregate(
-        sold_kilos=Sum(F('quantity') * F('unit_quantity_base_snapshot') / 1000.0, output_field=FloatField()),
-    ))
-    sold_monthly = SaleItem.objects.filter(sale__sale_date__gte=first_day_month).aggregate(sold_bags=Sum('quantity'))
-    sold_monthly.update(SaleItem.objects.filter(
-        sale__sale_date__gte=first_day_month, product__base_unit=Product.BaseUnit.G,
-    ).aggregate(
-        sold_kilos=Sum(F('quantity') * F('unit_quantity_base_snapshot') / 1000.0, output_field=FloatField()),
-    ))
-
-    total_bags = inventory_totals['total_bags'] or 0
-    total_kilos = inventory_totals['total_kilos'] or 0
-    sold_bags_total = sold_totals['sold_bags'] or 0
-    sold_kilos_total = sold_totals['sold_kilos'] or 0
-    stock_bags = max(total_bags - sold_bags_total, 0)
-    stock_kilos = max(total_kilos - sold_kilos_total, 0)
+    stock_bags = 0
+    stock_kilos = 0
+    for product in Product.objects.filter(
+        item_type=Product.ItemType.COFFEE,
+        coffee_stage=Product.CoffeeStage.GROUND,
+        base_unit=Product.BaseUnit.G,
+        is_stock_tracked=True,
+    ):
+        stock_grams = InventoryService.get_stock(product)
+        stock_kilos += stock_grams / 1000
+        if product.is_sellable and product.sale_unit_quantity:
+            stock_bags += stock_grams / product.sale_unit_quantity
 
     all_time_sales_total = SaleItem.objects.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0
     fallback_bag_price = Product.objects.filter(active=True).aggregate(avg_price=Avg('sale_price'))['avg_price'] or 0
-    average_value_per_bag = (all_time_sales_total / sold_bags_total) if sold_bags_total else fallback_bag_price
-    sales_objective = stock_bags * average_value_per_bag
+    sold_bags_total = SaleItem.objects.aggregate(total=Sum('quantity'))['total'] or 0
+    average_value_per_bag = float(
+        (all_time_sales_total / sold_bags_total) if sold_bags_total else fallback_bag_price,
+    )
+    sales_objective = float(stock_bags) * average_value_per_bag
 
     # Refresh stored periods with sales, then hide only future months from the history.
     periods_with_sales = SaleItem.objects.values(
@@ -188,7 +173,7 @@ def home(request):
         ],
         'sales_total_month': format_cop(sales_total_month),
         'sales_objective': format_cop(sales_objective),
-        'sales_objective_note': 'Valor del stock no vendido multiplicado por el precio promedio por bolsa.',
+        'sales_objective_note': 'Valor del stock operativo multiplicado por el precio promedio por bolsa.',
         'sales_objective_stock': stock_bags,
         'expenses_total_month': format_cop(expenses_total_month),
         'profit_month': format_cop(profit_month),
@@ -200,15 +185,12 @@ def home(request):
         'average_ticket': format_cop(average_ticket),
         'best_selling_product': best_selling_product.name if best_selling_product else 'N/A',
         'stock_bags': stock_bags,
-        'stock_kilos': stock_kilos or 0,
+        'stock_kilos': stock_kilos,
         'sold_bags_total': sold_bags_total,
-        'sold_kilos_total': sold_kilos_total or 0,
         'total_sales_all_time': format_cop(all_time_sales_total),
         'total_sold_bags_all_time': sold_bags_total,
         'total_expenses_all_time': format_cop(expenses_total_year),
         'total_profit_all_time': format_cop(profit_year),
-        'total_bags': total_bags,
-        'global_summary_note': 'Incluye ventas globales, bolsas vendidas, gastos totales y utilidad total.',
         'monthly_records': monthly_records,
         'chart_labels': json.dumps(labels, ensure_ascii=False),
         'chart_sales_data': json.dumps(sales_history),

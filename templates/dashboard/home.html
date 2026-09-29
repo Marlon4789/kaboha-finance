@@ -59,8 +59,7 @@
             <div class="card-body">
                 <h6 class="card-subtitle mb-2 text-muted">Inventario bolsas</h6>
                 <h3 class="card-title">{{ stock_bags }} disponibles</h3>
-                <p class="text-muted tiny mb-1">Vendidas: {{ total_sold_bags_all_time }}</p>
-                <p class="text-muted tiny mb-0">Total ingresadas: {{ total_bags }}</p>
+                <p class="text-muted tiny mb-0">Calculadas desde el inventario operativo.</p>
             </div>
         </div>
     </div>
@@ -126,7 +125,8 @@
                             <div class="card shadow-sm dashboard-card dashboard-secondary-card collapse-card">
                                 <div class="card-body">
                                     <h6 class="card-subtitle mb-2 text-muted">Inventario kilos</h6>
-                                    <h3 class="card-title">{{ stock_kilos|floatformat:2 }} / {{ sold_kilos_total|floatformat:2 }}</h3>
+                                    <h3 class="card-title">{{ stock_kilos|floatformat:2 }} disponibles</h3>
+                                    <p class="text-muted tiny mb-0">Café molido en inventario operativo.</p>
                                 </div>
                             </div>
                         </div>

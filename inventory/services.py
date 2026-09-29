@@ -137,6 +137,7 @@ class InventoryService:
         notes='',
         created_by=None,
         context=None,
+        operation_key=None,
     ):
         """Append one positive receipt; optional context links are explicit, never automatic."""
         if movement_type not in cls.INCOMING_CONTEXTS:
@@ -160,6 +161,7 @@ class InventoryService:
             reason=reason,
             notes=notes,
             created_by=created_by,
+            operation_key=operation_key,
             **context_values,
         )
 

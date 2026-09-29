@@ -22,24 +22,19 @@ from expenses.models import Expense, ExpenseCategory
 from inventory.models import InventoryEntry, InventoryMovement
 from products.models import Product
 from sales.models import Sale, SaleItem
-from .forms import InventoryEntryForm
+from . import forms
+from .admin import InventoryEntryAdmin
+from django.contrib.admin.sites import AdminSite
+from django.test import RequestFactory
+from inventory.services import InventoryService
 
 
 class InventoryTests(TestCase):
-    def test_inventory_form_is_in_spanish_and_includes_pergamino(self):
-        form = InventoryEntryForm()
-
-        self.assertIn('kilos_pergamino', form.fields)
-        self.assertEqual(form.fields['kilos_pergamino'].label, 'Kilos de café pergamino')
-        response = self.client.get(reverse('inventory_create'))
-        self.assertContains(response, 'Kilos de café pergamino')
-        self.assertContains(response, 'Cantidad de café pergamino.')
-
     def test_inventory_list_page_status_code(self):
         response = self.client.get(reverse('inventory_list'))
         self.assertEqual(response.status_code, 200)
 
-    def test_inventory_entry_and_sales_affect_stock(self):
+    def test_legacy_entries_are_visible_but_do_not_affect_operational_stock(self):
         InventoryEntry.objects.create(date=timezone.localdate(), bags_added=10, kilos_added=50, kilos_pergamino=12)
         product = Product.objects.create(
             name='Café Test',
@@ -55,18 +50,29 @@ class InventoryTests(TestCase):
             production_cost=10000,
             active=True,
         )
-        sale = Sale.objects.create(sale_date=timezone.localdate(), payment_method='Efectivo')
-        SaleItem.objects.create(sale=sale, product=product, quantity=2, unit_price=20000)
+        InventoryService.record_incoming(
+            product, 2000, movement_type=InventoryMovement.MovementType.OPENING_BALANCE_IN,
+        )
 
         response = self.client.get(reverse('inventory_list'))
-        self.assertContains(response, 'Bolsas disponibles')
-        self.assertContains(response, '8')
-        self.assertContains(response, 'Bolsas vendidas')
-        self.assertContains(response, '2')
-        self.assertContains(response, 'Kilos pergamino')
-        self.assertEqual(response.context['stock_kilos'], 49.0)
-        self.assertEqual(response.context['sold_bags_total'], 2)
-        self.assertEqual(response.context['total_kilos_pergamino'], 12.0)
+        self.assertContains(response, 'Inventario operativo')
+        self.assertContains(response, 'Histórico del inventario legado')
+        self.assertEqual(response.context['stock_rows'][0]['quantity'], Decimal('2000.000'))
+        self.assertEqual(response.context['historical_entries'].count(), 1)
+
+    def test_legacy_inventory_cannot_be_managed_from_forms_views_or_admin(self):
+        entry = InventoryEntry.objects.create(date=timezone.localdate(), bags_added=1)
+
+        self.assertFalse(hasattr(forms, 'InventoryEntryForm'))
+        self.assertEqual(self.client.get('/inventory/new/').status_code, 404)
+        self.assertEqual(self.client.get(f'/inventory/{entry.pk}/edit/').status_code, 404)
+        self.assertEqual(self.client.post(f'/inventory/{entry.pk}/delete/').status_code, 404)
+
+        admin = InventoryEntryAdmin(InventoryEntry, AdminSite())
+        request = RequestFactory().get('/admin/inventory/inventoryentry/')
+        self.assertFalse(admin.has_add_permission(request))
+        self.assertFalse(admin.has_change_permission(request, entry))
+        self.assertFalse(admin.has_delete_permission(request, entry))
 
 
 class InventoryMovementTests(TestCase):
