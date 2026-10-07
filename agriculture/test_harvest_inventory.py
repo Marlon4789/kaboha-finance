@@ -24,6 +24,7 @@ from products.models import Product
 class HarvestInventoryIntegrationTests(TestCase):
     def setUp(self):
         user = get_user_model().objects.create_user(username='harvest-user', password='test-password')
+        self.client.force_login(user)
         self.farm = Farm.objects.create(owner=user, name='Finca cosecha')
         self.lot = Lot.objects.create(
             farm=self.farm, code='H-01', name='Lote cosecha', area_ha=Decimal('1.0000'),

@@ -8,7 +8,7 @@ from products.models import Product
 
 class HarvestCreateForm(forms.Form):
     crop_cycle = forms.ModelChoiceField(
-        queryset=CropCycle.objects.select_related('lot', 'lot__farm').order_by('-start_date'),
+        queryset=CropCycle.objects.none(),
         label='Ciclo de cultivo',
     )
     harvested_on = forms.DateField(
@@ -20,6 +20,12 @@ class HarvestCreateForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={'rows': 3}),
     )
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['crop_cycle'].queryset = CropCycle.objects.filter(
+            lot__farm__owner=user,
+        ).select_related('lot', 'lot__farm').order_by('-start_date')
 
 
 class HarvestInventoryForm(forms.Form):

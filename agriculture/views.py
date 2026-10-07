@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -13,8 +14,9 @@ from agriculture.services import (
 )
 
 
+@login_required
 def harvest_list(request):
-    harvests = Harvest.objects.select_related(
+    harvests = Harvest.objects.filter(crop_cycle__lot__farm__owner=request.user).select_related(
         'crop_cycle', 'crop_cycle__lot', 'crop_cycle__lot__farm', 'inventory_movement',
     ).annotate(inventory_movement_id=F('inventory_movement__pk')).order_by(
         '-harvested_on', '-created_at',
@@ -22,9 +24,10 @@ def harvest_list(request):
     return render(request, 'agriculture/harvest_list.html', {'harvests': harvests})
 
 
+@login_required
 def harvest_create(request):
     if request.method == 'POST':
-        form = HarvestCreateForm(request.POST)
+        form = HarvestCreateForm(request.POST, user=request.user)
         if form.is_valid():
             harvest = Harvest.objects.create(
                 crop_cycle=form.cleaned_data['crop_cycle'],
@@ -34,14 +37,16 @@ def harvest_create(request):
             messages.info(request, 'Cosecha creada como pendiente; registra su cantidad para confirmarla en inventario.')
             return redirect('harvest_inventory_register', pk=harvest.pk)
     else:
-        form = HarvestCreateForm(initial={'harvested_on': timezone.localdate()})
+        form = HarvestCreateForm(initial={'harvested_on': timezone.localdate()}, user=request.user)
     return render(request, 'agriculture/harvest_form.html', {'form': form})
 
 
+@login_required
 def harvest_register_inventory(request, pk):
     harvest = get_object_or_404(
         Harvest.objects.select_related('crop_cycle', 'crop_cycle__lot', 'crop_cycle__lot__farm'),
         pk=pk,
+        crop_cycle__lot__farm__owner=request.user,
     )
     if hasattr(harvest, 'inventory_movement'):
         messages.warning(request, 'Esta cosecha ya fue registrada en inventario.')
@@ -55,7 +60,7 @@ def harvest_register_inventory(request, pk):
                     harvest,
                     form.cleaned_data['product'],
                     form.cleaned_data['quantity_kg'],
-                    created_by=request.user if request.user.is_authenticated else None,
+                    created_by=request.user,
                 )
             except HarvestAlreadyRegisteredError as exc:
                 messages.warning(request, str(exc))

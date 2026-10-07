@@ -211,6 +211,23 @@ class InventoryService:
         product = cls._get_product(product)
         return cls._available_layers_for_product(product)
 
+    @staticmethod
+    def _select_explicit_layers(available_layers, source_layers):
+        """Keep only the requested layers, in the caller's order, or fail loudly."""
+        requested = [getattr(layer, 'pk', layer) for layer in source_layers]
+        if not requested:
+            raise InventoryOperationError('Debes indicar al menos una capa de origen.')
+        if len(set(requested)) != len(requested):
+            raise InventoryOperationError('Una capa de origen no puede repetirse.')
+        by_pk = {layer.pk: layer for layer in available_layers}
+        missing = [pk for pk in requested if pk not in by_pk]
+        if missing:
+            raise InventoryOperationError(
+                'Las capas indicadas no existen, no pertenecen al producto o no tienen saldo: '
+                + ', '.join(str(pk) for pk in missing) + '.',
+            )
+        return [by_pk[pk] for pk in requested]
+
     @classmethod
     @transaction.atomic
     def consume(
@@ -224,8 +241,14 @@ class InventoryService:
         notes='',
         created_by=None,
         context=None,
+        source_layers=None,
     ):
-        """Consume FIFO layers atomically, writing one immutable row per source layer."""
+        """Consume layers atomically, writing one immutable row per source layer.
+
+        Without source_layers the consumption is FIFO. With source_layers (layer rows or
+        pks) only those layers are used, in the given order, so a caller can preserve
+        the origin of a specific receipt.
+        """
         if movement_type not in cls.OUTGOING_CONTEXTS:
             raise InventoryOperationError('El tipo indicado no es un movimiento de salida.')
         product = cls._get_product(product, lock=True)
@@ -237,6 +260,8 @@ class InventoryService:
         context_values = cls._context_values(context, cls.OUTGOING_CONTEXTS[movement_type])
 
         layers = list(cls._available_layers_for_product(product))
+        if source_layers is not None:
+            layers = cls._select_explicit_layers(layers, source_layers)
         available_quantity = sum((layer.available_quantity for layer in layers), ZERO_QUANTITY)
         if available_quantity < quantity:
             raise InsufficientStockError(product, quantity, available_quantity)

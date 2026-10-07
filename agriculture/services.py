@@ -3,10 +3,11 @@
 from datetime import datetime, time
 from decimal import Decimal, InvalidOperation
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from agriculture.models import Harvest
+from agriculture.models import ActivityInput, AgriculturalActivity, Harvest
 from inventory.models import InventoryMovement
 from inventory.services import InventoryOperationError, InventoryService
 from products.models import Product
@@ -18,6 +19,10 @@ class HarvestRegistrationError(ValueError):
 
 class HarvestAlreadyRegisteredError(HarvestRegistrationError):
     """Raised when a harvest already has its unique inventory receipt."""
+
+
+class ActivityInputError(ValueError):
+    """Raised when an activity input cannot be recorded against inventory."""
 
 
 @transaction.atomic
@@ -89,3 +94,50 @@ def register_harvest_inventory(
         if InventoryMovement.objects.filter(harvest_id=harvest.pk).exists():
             raise HarvestAlreadyRegisteredError('Esta cosecha ya fue registrada en inventario.') from exc
         raise
+
+
+@transaction.atomic
+def record_activity_input(activity, product, quantity, *, notes='', created_by=None, source_layers=None):
+    """Record one input and consume its stock in the same transaction.
+
+    The ActivityInput holds the declared quantity; the cost is never stored here but
+    derived from the AGRICULTURAL_CONSUMPTION_OUT rows (one per FIFO or explicit layer).
+    Any failure rolls back both the input and its movements. Returns (input, movements).
+    """
+    try:
+        activity = AgriculturalActivity.objects.get(pk=getattr(activity, 'pk', activity))
+        product = Product.objects.get(pk=getattr(product, 'pk', product))
+    except (AgriculturalActivity.DoesNotExist, Product.DoesNotExist, TypeError, ValueError) as exc:
+        raise ActivityInputError('La actividad o el producto indicado no existe.') from exc
+
+    try:
+        quantity = Decimal(str(quantity))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ActivityInputError('La cantidad del insumo debe ser un número válido.') from exc
+    if not quantity.is_finite() or quantity <= 0:
+        raise ActivityInputError('La cantidad del insumo debe ser mayor que cero.')
+
+    activity_input = ActivityInput(activity=activity, product=product, quantity=quantity, notes=notes)
+    try:
+        activity_input.full_clean()
+    except ValidationError as exc:
+        raise ActivityInputError(' '.join(exc.messages)) from exc
+    activity_input.save(force_insert=True)
+
+    occurred_at = timezone.make_aware(
+        datetime.combine(activity.performed_on, time.min),
+        timezone.get_current_timezone(),
+    )
+    try:
+        movements = InventoryService.consume(
+            product,
+            activity_input.quantity,
+            movement_type=InventoryMovement.MovementType.AGRICULTURAL_CONSUMPTION_OUT,
+            occurred_at=occurred_at,
+            created_by=created_by,
+            context={'activity_input': activity_input},
+            source_layers=source_layers,
+        )
+    except InventoryOperationError as exc:
+        raise ActivityInputError(str(exc)) from exc
+    return activity_input, movements

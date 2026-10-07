@@ -236,6 +236,30 @@ class ActivityInput(models.Model):
             models.CheckConstraint(condition=Q(quantity__gt=0), name='agri_activity_input_quantity_positive'),
         ]
 
+    def clean(self):
+        super().clean()
+        if not self.product_id:
+            return
+        from products.models import Product
+
+        if self.product.item_type != Product.ItemType.AGRICULTURAL_INPUT:
+            raise ValidationError({'product': _('Solo se pueden usar productos de tipo insumo agrícola.')})
+        if not self.product.is_stock_tracked:
+            raise ValidationError({'product': _('El insumo debe controlar inventario para registrar su consumo.')})
+
+    def _assert_consumed_fields_are_immutable(self):
+        if not self.pk or self._state.adding:
+            return
+        previous = type(self).objects.filter(pk=self.pk).values('activity_id', 'product_id', 'quantity').first()
+        if not previous or not self.inventory_movements.exists():
+            return
+        if any(getattr(self, field) != value for field, value in previous.items()):
+            raise ValidationError(_('No se pueden cambiar los datos de un insumo que ya descontó inventario.'))
+
+    def save(self, *args, **kwargs):
+        self._assert_consumed_fields_are_immutable()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f'{self.product.name}: {self.quantity}'
 
