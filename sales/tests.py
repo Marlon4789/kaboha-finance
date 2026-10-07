@@ -41,6 +41,43 @@ class SalesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Cliente Test')
 
+    def test_historical_sale_item_price_and_quantity_snapshot_survive_product_deactivation(self):
+        product = Product.objects.create(
+            name='Café Histórico Inactivo',
+            item_type=Product.ItemType.COFFEE,
+            coffee_stage=Product.CoffeeStage.GROUND,
+            base_unit=Product.BaseUnit.G,
+            sale_unit_quantity=250,
+            is_sellable=True,
+            is_stock_tracked=True,
+            active=True,
+            sale_price=18000,
+            production_cost=9000,
+        )
+        sale = Sale.objects.create(
+            sale_date=timezone.localdate(),
+            customer_name='Cliente histórico',
+            payment_method='Efectivo',
+        )
+        item = SaleItem.objects.create(
+            sale=sale,
+            product=product,
+            quantity=2,
+            unit_price=17000,
+        )
+        original_snapshot = item.unit_quantity_base_snapshot
+
+        product.active = False
+        product.save(update_fields=['active'])
+
+        response = self.client.get(reverse('sale_list'))
+        item.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Cliente histórico')
+        self.assertEqual(item.unit_price, 17000)
+        self.assertEqual(item.unit_quantity_base_snapshot, original_snapshot)
+
     def test_sale_item_grams_use_snapshot_after_product_weight_changes(self):
         product = Product.objects.create(
             name='Café Snapshot',

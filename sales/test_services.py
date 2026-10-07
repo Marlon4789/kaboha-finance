@@ -11,7 +11,12 @@ from inventory.models import InventoryMovement
 from inventory.services import InsufficientStockError, InventoryService
 from products.models import Product
 from sales.models import Sale, SaleItem
-from sales.services import SaleBeforeCutoverError, SaleIdempotencyConflictError, SalesService
+from sales.services import (
+    SaleBeforeCutoverError,
+    SaleIdempotencyConflictError,
+    SalesOperationError,
+    SalesService,
+)
 
 
 class SalesServiceTests(TestCase):
@@ -24,6 +29,7 @@ class SalesServiceTests(TestCase):
             sale_unit_quantity=quantity,
             is_sellable=True,
             is_stock_tracked=True,
+            active=True,
             sale_price=20000,
             production_cost=10000,
         )
@@ -48,6 +54,21 @@ class SalesServiceTests(TestCase):
     def create(self, sale_data, lines, operation_key=None):
         return SalesService.create_integrated_sale(
             sale_data, lines, operation_key=operation_key or str(uuid4()),
+        )
+
+    def assert_ineligible_product_is_rejected(self, product):
+        with self.assertRaises(SalesOperationError):
+            self.create(self.sale_data(), [
+                {'product': product, 'quantity': 1, 'unit_price': 20000},
+            ])
+
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertEqual(SaleItem.objects.count(), 0)
+        self.assertEqual(
+            InventoryMovement.objects.filter(
+                movement_type=InventoryMovement.MovementType.SALE_OUT,
+            ).count(),
+            0,
         )
 
     def test_simple_sale_uses_snapshot_and_reduces_stock(self):
@@ -120,6 +141,27 @@ class SalesServiceTests(TestCase):
         )
         self.assertEqual(InventoryService.get_stock(product), Decimal('500.000'))
 
+    def test_inactive_product_is_rejected_before_sale_writes(self):
+        product = self.make_product('Café inactivo')
+        product.active = False
+        product.save(update_fields=['active'])
+
+        self.assert_ineligible_product_is_rejected(product)
+
+    def test_non_sellable_product_is_rejected_before_sale_writes(self):
+        product = self.make_product('Café no vendible')
+        product.is_sellable = False
+        product.save(update_fields=['is_sellable'])
+
+        self.assert_ineligible_product_is_rejected(product)
+
+    def test_untracked_product_is_rejected_before_sale_writes(self):
+        product = self.make_product('Café sin seguimiento')
+        product.is_stock_tracked = False
+        product.save(update_fields=['is_stock_tracked'])
+
+        self.assert_ineligible_product_is_rejected(product)
+
     def test_idempotency_recognizes_same_sale_without_second_consumption(self):
         product = self.make_product('Café idempotente')
         self.receipt(product, Decimal('2000'))
@@ -128,6 +170,8 @@ class SalesServiceTests(TestCase):
         lines = [{'product': product, 'quantity': 1, 'unit_price': 20000}]
 
         first, first_created = self.create(data, lines, key)
+        product.active = False
+        product.save(update_fields=['active'])
         second, second_created = self.create(data, lines, key)
 
         self.assertTrue(first_created)
@@ -209,6 +253,57 @@ class SalesWebIntegrationTests(TestCase):
             self.product, 2000, movement_type=InventoryMovement.MovementType.OPENING_BALANCE_IN,
         )
 
+    def make_product(self, name, *, active=True, is_sellable=True, is_stock_tracked=True):
+        return Product.objects.create(
+            name=name,
+            item_type=Product.ItemType.COFFEE,
+            coffee_stage=Product.CoffeeStage.GROUND,
+            base_unit=Product.BaseUnit.G,
+            sale_unit_quantity=500,
+            is_sellable=is_sellable,
+            is_stock_tracked=is_stock_tracked,
+            active=active,
+            sale_price=20000,
+            production_cost=10000,
+        )
+
+    def make_unposted_sale(self):
+        sale = Sale.objects.create(
+            sale_date=date(2026, 9, 17),
+            customer_name='Cliente histórico',
+            payment_method='Efectivo',
+        )
+        item = SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=18000,
+        )
+        return sale, item
+
+    def post_sale_edit(self, sale, lines):
+        payload = {
+            'sale_date': sale.sale_date.isoformat(),
+            'customer_name': sale.customer_name or '',
+            'payment_method': sale.payment_method,
+            'notes': sale.notes,
+            'items-TOTAL_FORMS': str(len(lines)),
+            'items-INITIAL_FORMS': str(sum(line.get('item') is not None for line in lines)),
+            'items-MIN_NUM_FORMS': '0',
+            'items-MAX_NUM_FORMS': '1000',
+        }
+        for index, line in enumerate(lines):
+            payload.update({
+                f'items-{index}-product': str(line['product'].pk),
+                f'items-{index}-quantity': str(line.get('quantity', 1)),
+                f'items-{index}-unit_price': str(line.get('unit_price', 18000)),
+                f'items-{index}-sale': str(sale.pk),
+            })
+            item = line.get('item')
+            if item is not None:
+                payload[f'items-{index}-id'] = str(item.pk)
+        return self.client.post(reverse('sale_edit', args=[sale.pk]), payload)
+
     def test_web_create_generates_key_and_posts_integrated_sale(self):
         response = self.client.get(reverse('sale_create'))
         key = response.context['form']['operation_key'].value()
@@ -233,3 +328,132 @@ class SalesWebIntegrationTests(TestCase):
         self.assertEqual(Sale.objects.count(), 1)
         self.assertEqual(InventoryMovement.objects.filter(movement_type='SALE_OUT').count(), 1)
         self.assertEqual(InventoryService.get_stock(self.product), Decimal('1500.000'))
+
+    def test_web_create_rejects_inactive_product_clearly_without_writes(self):
+        self.product.active = False
+        self.product.save(update_fields=['active'])
+        response = self.client.get(reverse('sale_create'))
+        key = response.context['form']['operation_key'].value()
+
+        response = self.client.post(reverse('sale_create'), {
+            'sale_date': '2026-09-18',
+            'customer_name': 'Cliente web',
+            'payment_method': 'Efectivo',
+            'notes': '',
+            'operation_key': key,
+            'items-TOTAL_FORMS': '1',
+            'items-INITIAL_FORMS': '0',
+            'items-MIN_NUM_FORMS': '0',
+            'items-MAX_NUM_FORMS': '1000',
+            'items-0-product': str(self.product.pk),
+            'items-0-quantity': '1',
+            'items-0-unit_price': '20000',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'está inactivo')
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertEqual(SaleItem.objects.count(), 0)
+        self.assertEqual(
+            InventoryMovement.objects.filter(
+                movement_type=InventoryMovement.MovementType.SALE_OUT,
+            ).count(),
+            0,
+        )
+
+    def test_historical_sale_with_inactive_product_remains_visible_and_unchanged(self):
+        sale, item = self.make_unposted_sale()
+        original_snapshot = item.unit_quantity_base_snapshot
+        self.product.active = False
+        self.product.save(update_fields=['active'])
+
+        response = self.client.get(reverse('sale_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Cliente histórico')
+        item.refresh_from_db()
+        self.assertEqual(item.unit_price, 18000)
+        self.assertEqual(item.unit_quantity_base_snapshot, original_snapshot)
+        self.assertEqual(item.sale_id, sale.pk)
+
+    def test_historical_line_with_same_inactive_product_can_be_edited(self):
+        sale, item = self.make_unposted_sale()
+        self.product.active = False
+        self.product.save(update_fields=['active'])
+
+        response = self.post_sale_edit(sale, [{
+            'item': item,
+            'product': self.product,
+            'quantity': 2,
+            'unit_price': 19000,
+        }])
+
+        self.assertRedirects(response, reverse('sale_list'))
+        item.refresh_from_db()
+        self.assertEqual(item.product_id, self.product.pk)
+        self.assertEqual(item.quantity, 2)
+        self.assertEqual(item.unit_quantity_base_snapshot, Decimal('500.000'))
+
+    def test_adding_inactive_product_to_historical_sale_is_rejected(self):
+        sale, item = self.make_unposted_sale()
+        inactive_product = self.make_product('Café inactivo en edición', active=False)
+
+        response = self.post_sale_edit(sale, [
+            {'item': item, 'product': self.product},
+            {'product': inactive_product},
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'está inactivo')
+        self.assertEqual(sale.items.count(), 1)
+
+    def test_changing_historical_line_to_inactive_product_is_rejected(self):
+        sale, item = self.make_unposted_sale()
+        inactive_product = self.make_product('Café inactivo de reemplazo', active=False)
+
+        response = self.post_sale_edit(sale, [{
+            'item': item,
+            'product': inactive_product,
+        }])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'está inactivo')
+        item.refresh_from_db()
+        self.assertEqual(item.product_id, self.product.pk)
+
+    def test_adding_ineligible_products_to_historical_sale_is_rejected(self):
+        sale, item = self.make_unposted_sale()
+        ineligible_products = [
+            self.make_product('Café no vendible en edición', is_sellable=False),
+            self.make_product('Café sin seguimiento en edición', is_stock_tracked=False),
+        ]
+
+        for product in ineligible_products:
+            with self.subTest(product=product.name):
+                response = self.post_sale_edit(sale, [
+                    {'item': item, 'product': self.product},
+                    {'product': product},
+                ])
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'no está habilitado para venta' if not product.is_sellable else 'no controla inventario')
+                self.assertEqual(sale.items.count(), 1)
+
+    def test_changing_historical_line_to_ineligible_product_is_rejected(self):
+        sale, item = self.make_unposted_sale()
+        ineligible_products = [
+            self.make_product('Café no vendible de reemplazo', is_sellable=False),
+            self.make_product('Café sin seguimiento de reemplazo', is_stock_tracked=False),
+        ]
+
+        for product in ineligible_products:
+            with self.subTest(product=product.name):
+                response = self.post_sale_edit(sale, [{
+                    'item': item,
+                    'product': product,
+                }])
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'no está habilitado para venta' if not product.is_sellable else 'no controla inventario')
+                item.refresh_from_db()
+                self.assertEqual(item.product_id, self.product.pk)

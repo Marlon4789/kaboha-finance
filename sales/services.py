@@ -74,6 +74,15 @@ class SalesService:
             raise SalesOperationError('Una venta operativa debe tener al menos un ítem.')
         return normalized
 
+    @staticmethod
+    def validate_product_eligibility(product):
+        if not product.active:
+            raise SalesOperationError(f'El producto {product.name} está inactivo y no está disponible para nuevas ventas.')
+        if not product.is_sellable:
+            raise SalesOperationError(f'El producto {product.name} no está habilitado para venta.')
+        if not product.is_stock_tracked:
+            raise SalesOperationError(f'El producto {product.name} no controla inventario.')
+
     @classmethod
     def _validate_products(cls, lines, *, lock):
         product_ids = sorted({line['product_id'] for line in lines})
@@ -83,10 +92,7 @@ class SalesService:
             raise SalesOperationError('Uno de los productos de la venta ya no existe.')
         for line in lines:
             product = products[line['product_id']]
-            if not product.is_sellable:
-                raise SalesOperationError(f'El producto {product.name} no está habilitado para venta.')
-            if not product.is_stock_tracked:
-                raise SalesOperationError(f'El producto {product.name} no controla inventario.')
+            cls.validate_product_eligibility(product)
             if product.base_unit not in Product.BaseUnit.values:
                 raise SalesOperationError(f'El producto {product.name} no tiene una unidad base válida.')
             if product.sale_unit_quantity is None or product.sale_unit_quantity <= 0:
