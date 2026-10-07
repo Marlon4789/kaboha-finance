@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -107,17 +107,45 @@ class Product(models.Model):
         has_sales = SaleItem.objects.filter(product_id=self.pk).exists()
         InventoryMovement = apps.get_model('inventory', 'InventoryMovement')
         has_inventory_movements = InventoryMovement.objects.filter(product_id=self.pk).exists()
-        if has_sales or has_inventory_movements:
+        ActivityInput = apps.get_model('agriculture', 'ActivityInput')
+        has_agricultural_inputs = ActivityInput.objects.filter(product_id=self.pk).exists()
+        if has_sales or has_inventory_movements or has_agricultural_inputs:
             raise ValidationError({
                 'base_unit': (
-                    'No se puede cambiar la unidad base después de registrar ventas o movimientos '
-                    'de inventario; crea otro producto.'
+                    'No se puede cambiar la unidad base después de registrar ventas, movimientos '
+                    'de inventario o insumos agrícolas; crea otro producto.'
                 ),
+            })
+
+    def _validate_stock_tracking_history(self):
+        if not self.pk:
+            return
+        previous_value = type(self).objects.filter(pk=self.pk).values_list(
+            'is_stock_tracked', flat=True,
+        ).first()
+        if previous_value is None or previous_value == self.is_stock_tracked:
+            return
+
+        InventoryMovement = apps.get_model('inventory', 'InventoryMovement')
+        if InventoryMovement.objects.filter(product_id=self.pk).exists():
+            raise ValidationError({
+                'is_stock_tracked': (
+                    'No se puede cambiar el control de inventario después de registrar movimientos '
+                    'de inventario.'
+                ),
+            })
+
+    def _validate_sellable_inventory(self):
+        if self.is_sellable and not self.is_stock_tracked:
+            raise ValidationError({
+                'is_stock_tracked': 'Un producto vendible debe controlar inventario en Cafena v1.',
             })
 
     def clean(self):
         super().clean()
         self._validate_base_unit_history()
+        self._validate_stock_tracking_history()
+        self._validate_sellable_inventory()
         if self.item_type == self.ItemType.COFFEE and not self.coffee_stage:
             raise ValidationError({'coffee_stage': 'El café debe tener una etapa.'})
         if self.item_type != self.ItemType.COFFEE and self.coffee_stage:
@@ -133,8 +161,16 @@ class Product(models.Model):
                 raise ValidationError({'base_unit': 'Un producto vendible debe tener unidad base.'})
 
     def save(self, *args, **kwargs):
-        self._validate_base_unit_history()
-        super().save(*args, **kwargs)
+        with transaction.atomic():
+            if self.pk and not self._state.adding:
+                # Serialize these checks with InventoryService's Product-row locks.
+                type(self).objects.select_for_update().filter(pk=self.pk).values_list(
+                    'pk', flat=True,
+                ).first()
+            # Domain changes must use instance saves; QuerySet.update() bypasses these guards.
+            self._validate_base_unit_history()
+            self._validate_stock_tracking_history()
+            super().save(*args, **kwargs)
 
     @property
     def profit_per_unit(self):
@@ -144,9 +180,10 @@ class Product(models.Model):
 
     @property
     def margin_percentage(self):
-        if self.sale_price:
-            return round((self.profit_per_unit / self.sale_price) * 100, 2)
-        return 0
+        profit = self.profit_per_unit
+        if profit is None or self.sale_price is None or self.sale_price == 0:
+            return None
+        return round((profit / self.sale_price) * 100, 2)
 
     def __str__(self):
         return self.name

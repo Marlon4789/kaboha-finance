@@ -1,3 +1,5 @@
+from django.contrib import messages
+from django.db.models.deletion import ProtectedError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from .models import Product
@@ -35,7 +37,14 @@ def product_edit(request, pk):
 def product_delete(request, pk):
     product = get_object_or_404(Product, pk=pk)
     if request.method == 'POST':
-        product.delete()
+        try:
+            product.delete()
+        except ProtectedError:
+            messages.error(
+                request,
+                'No se puede eliminar este producto porque tiene ventas, movimientos de inventario '
+                'o registros agrícolas asociados. Desactívalo para conservar el historial.',
+            )
         return redirect(reverse('product_list'))
     return render(request, 'confirm_delete.html', {
         'object_name': product.name,

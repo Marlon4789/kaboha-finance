@@ -9,6 +9,11 @@
     </div>
     <a class="btn btn-primary btn-icon-text" href="{% url 'product_create' %}"><i class="bi bi-plus-lg me-1"></i>Nuevo producto</a>
 </div>
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-warning" role="alert">{{ message }}</div>
+    {% endfor %}
+{% endif %}
 <div class="card shadow-sm">
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -30,9 +35,9 @@
                         <td>{{ product.name }}</td>
                         <td>{{ product.sale_unit_quantity|default_if_none:"—" }} {{ product.get_base_unit_display|default:"" }}</td>
                         <td>{{ product.sale_price|co_currency }}</td>
-                        <td>{{ product.production_cost|co_currency }}</td>
-                        <td>{{ product.profit_per_unit|co_currency }}</td>
-                        <td>{{ product.margin_percentage }} %</td>
+                        <td>{% if product.production_cost is None %}—{% else %}{{ product.production_cost|co_currency }}{% endif %}</td>
+                        <td>{% if product.profit_per_unit is None %}—{% else %}{{ product.profit_per_unit|co_currency }}{% endif %}</td>
+                        <td>{% if product.margin_percentage is None %}—{% else %}{{ product.margin_percentage }} %{% endif %}</td>
                         <td>{{ product.active|yesno:'Sí,No' }}</td>
                         <td class="table-actions">
                             <a class="btn btn-outline-secondary btn-sm icon-btn" href="{% url 'product_edit' product.pk %}" title="Editar">
