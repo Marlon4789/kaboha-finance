@@ -4,6 +4,31 @@
 
 Cafena es una aplicación web Django para administrar finanzas, ventas, inventario y rentabilidad de un negocio de café especializado. El repositorio conserva el nombre histórico Kaboha Finance en documentación y varios contextos, pero el proyecto actual debe tratarse como Cafena y no renombrar automáticamente módulos, vistas, URLs, clases ni variables solo porque el viejo nombre aún aparece en textos o nombres heredados.
 
+## Comandos del proyecto
+
+La base de datos selecciona SQLite con `DB_SQLITE=true`; sin esa variable, la configuración usa PostgreSQL. Para ejecutar los comandos localmente con SQLite:
+
+```bash
+DB_SQLITE=true python manage.py runserver
+DB_SQLITE=true python manage.py test
+DB_SQLITE=true python manage.py test sales
+DB_SQLITE=true python manage.py test agriculture.tests.AgriculturalCoreTests.test_farm_creation_and_owner_relation
+DB_SQLITE=true python manage.py check
+DB_SQLITE=true python manage.py makemigrations --check --dry-run
+```
+
+El comando de prueba específico acepta tanto un módulo o clase como la ruta completa a un método `test_*`. Las dependencias se instalan con `pip install -r requirements.txt`.
+
+## Mapa de arquitectura y flujos
+
+- `kaboha_finance/settings.py` configura las apps y la base de datos; `kaboha_finance/urls.py` monta el dashboard en `/` y conecta las rutas de cada app.
+- La aplicación es Django server-rendered: las apps de dominio contienen modelos, formularios, vistas y rutas; las plantillas compartidas viven en `templates/`, y los estilos propios en `static/css/style.css`. El dashboard usa Chart.js.
+- `products` mantiene el catálogo y los cálculos de utilidad/margen de cada producto. `sales` relaciona una venta con sus líneas (`SaleItem`); las operaciones de venta y consumo de inventario deben seguir el flujo de `sales/services.py` y `inventory/services.py`, no duplicarse en vistas.
+- `expenses` registra gastos asociados a categorías. `dashboard` agrega ventas y gastos por periodo, actualiza `MonthlySummary` como dato derivado y ofrece el historial y las exportaciones CSV/XLSX. Las transacciones son la fuente de verdad; los resúmenes deben poder recalcularse.
+- `agriculture` contiene el dominio agrícola (`Farm`, `Lot`, `CropCycle`, actividades, cosechas, producción, calidad, observaciones sanitarias y tareas). `agriculture/services.py` conecta el registro de cosechas con el inventario; revisa también sus formularios, rutas y pruebas al cambiar ese flujo.
+- Los valores financieros se manejan en COP; el peso base se registra en gramos y los reportes lo presentan en kilos. Mantén separadas las cantidades de bolsas, café molido y pergamino.
+- La interfaz y los textos de validación son en español colombiano (`es-co`), con zona horaria `America/Bogota`.
+
 ## Gate de arquitectura para Cafena v1
 
 Antes de crear modelos, migraciones, apps, vistas o flujos agrícolas nuevos, el agente debe respetar este orden obligatorio:
@@ -74,9 +99,9 @@ Dominio principal:
 ## Arquitectura actual
 
 Proyecto base:
-- Django 6.0.8 (verificado en uso actual del proyecto)
+- Django 6.x
 - Python 3.12.x
-- Apps principales: dashboard, products, sales, expenses, inventory
+- Apps principales: dashboard, products, sales, expenses, inventory, agriculture
 - Plantillas en templates/
 - Estilos en static/css/style.css
 - JavaScript con Chart.js
@@ -105,7 +130,9 @@ Modelos principales y relaciones actuales:
 - ExpenseCategory: categoría de gasto.
 - Expense: gasto general con fecha, categoría, descripción y monto.
 - InventoryEntry: entrada de inventario con fecha, bolsas y kilos; incluye kilos molidos y kilos pergamino.
+- InventoryMovement: movimiento de inventario asociado a operaciones de entrada y salida; revisar sus servicios y migraciones antes de cambiar el cálculo de existencias.
 - MonthlySummary: resumen mensual persistido para historial del dashboard.
+- Agriculture: `Farm`, `Lot`, `CropCycle`, `AgriculturalActivity`, `ActivityInput`, `ActivityLabor`, `Harvest`, `ProductionBatch`, `QualityAssessment`, `HealthObservation` y `Task`.
 
 Reglas:
 - Revisar relaciones existentes antes de crear nuevos modelos.
@@ -158,7 +185,7 @@ Reglas obligatorias:
 
 ## Testing
 
-Actualmente existen tests en dashboard e inventory, y el proyecto debe mantener una cultura de tests realistas.
+Hay pruebas Django en los módulos `dashboard`, `products`, `sales`, `expenses`, `inventory` y `agriculture`, incluidas pruebas de servicios e integraciones entre apps.
 
 Reglas:
 - Crear tests para lógica de negocio relevante.
