@@ -41,7 +41,7 @@
             <div class="card-body">
                 <h6 class="card-subtitle mb-2 text-muted">Utilidad del mes</h6>
                 <h3 class="card-title">{{ profit_month }}</h3>
-                <p class="text-muted tiny mb-0">Lo que queda después de costos y gastos.</p>
+                <p class="text-muted tiny mb-0">Ventas menos gastos registrados en el periodo.</p>
             </div>
         </div>
     </div>
@@ -66,11 +66,10 @@
     <div class="col-md-6 col-xl-4">
         <div class="card shadow-sm dashboard-card dashboard-highlight-card">
             <div class="card-body">
-                <h6 class="card-subtitle mb-2 text-muted">Total global</h6>
-                <h3 class="card-title">{{ total_sales_all_time }}</h3>
-                <p class="text-muted tiny mb-1">Bolsas vendidas: {{ total_sold_bags_all_time }}</p>
-                <p class="text-muted tiny mb-1">Gastos totales: {{ total_expenses_all_time }}</p>
-                <p class="text-muted tiny mb-0">Utilidad total: {{ total_profit_all_time }}</p>
+                <h6 class="card-subtitle mb-2 text-muted">Resumen anual</h6>
+                <p class="text-muted tiny mb-1">Ventas del año {{ current_year }}: {{ sales_total_year }}</p>
+                <p class="text-muted tiny mb-1">Gastos del año {{ current_year }}: {{ expenses_total_year }}</p>
+                <p class="text-muted tiny mb-0">Utilidad del año {{ current_year }}: {{ profit_year }}</p>
                    <!-- Removed global summary note -->
             </div>
         </div>

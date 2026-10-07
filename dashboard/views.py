@@ -22,24 +22,57 @@ def get_month_range(year, month):
     return date(year, month, 1)
 
 
+def summarize_period(sales_qs, expense_qs):
+    sales_data = sales_qs.aggregate(
+        total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()),
+        bags_sold=Sum('quantity'),
+    )
+    expenses_total = expense_qs.aggregate(total=Sum('amount'))['total'] or 0
+    sales_total = sales_data['total'] or 0
+    return {
+        'sales_total': sales_total,
+        'expenses_total': expenses_total,
+        'profit_total': sales_total - expenses_total,
+        'bags_sold': sales_data['bags_sold'] or 0,
+    }
+
+
 def sync_monthly_summary(year, month):
     sales_qs = SaleItem.objects.filter(sale__sale_date__year=year, sale__sale_date__month=month)
     expense_qs = Expense.objects.filter(date__year=year, date__month=month)
-    sales_total = sales_qs.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0
-    expenses_total = expense_qs.aggregate(total=Sum('amount'))['total'] or 0
-    profit_total = sales_total - expenses_total
-    bags_sold = sales_qs.aggregate(total=Sum('quantity'))['total'] or 0
+    if not sales_qs.exists() and not expense_qs.exists():
+        MonthlySummary.objects.filter(year=year, month=month).delete()
+        return
 
+    values = summarize_period(sales_qs, expense_qs)
     MonthlySummary.objects.update_or_create(
         year=year,
         month=month,
-        defaults={
-            'sales_total': sales_total,
-            'expenses_total': expenses_total,
-            'profit_total': profit_total,
-            'bags_sold': bags_sold,
-        },
+        defaults=values,
     )
+
+
+def reconcile_monthly_summaries(today):
+    periods = {
+        (sale_date.year, sale_date.month)
+        for sale_date in SaleItem.objects.filter(
+            sale__sale_date__lte=today,
+        ).values_list('sale__sale_date', flat=True).distinct()
+    }
+    periods.update(
+        (expense_date.year, expense_date.month)
+        for expense_date in Expense.objects.filter(
+            date__lte=today,
+        ).values_list('date', flat=True).distinct()
+    )
+    periods.update(
+        MonthlySummary.objects.filter(
+            Q(year__lt=today.year) | Q(year=today.year, month__lte=today.month),
+        ).values_list('year', 'month')
+    )
+
+    for year, month in sorted(periods):
+        sync_monthly_summary(year, month)
 
 
 def home(request):
@@ -69,21 +102,25 @@ def home(request):
 
     first_day_month = date(selected_year, selected_month, 1)
     current_month_display = f"{month_names_es[selected_month - 1].capitalize()} {selected_year}"
-    annual_start = today.replace(month=1, day=1)
+    annual_start = date(today.year, 1, 1)
 
-    sales_items = SaleItem.objects.filter(sale__sale_date__gte=annual_start)
-    expenses_year = Expense.objects.filter(date__gte=annual_start)
+    sales_items = SaleItem.objects.filter(
+        sale__sale_date__range=(annual_start, today),
+    )
+    expenses_year = Expense.objects.filter(date__range=(annual_start, today))
 
     monthly_sales = SaleItem.objects.filter(sale__sale_date__year=selected_year, sale__sale_date__month=selected_month)
     monthly_expenses = Expense.objects.filter(date__year=selected_year, date__month=selected_month)
 
-    sales_total_month = monthly_sales.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0
-    expenses_total_month = monthly_expenses.aggregate(total=Sum('amount'))['total'] or 0
-    sales_total_year = sales_items.aggregate(total=Sum(F('unit_price') * F('quantity'), output_field=FloatField()))['total'] or 0
-    expenses_total_year = expenses_year.aggregate(total=Sum('amount'))['total'] or 0
+    monthly_summary = summarize_period(monthly_sales, monthly_expenses)
+    year_summary = summarize_period(sales_items, expenses_year)
 
-    profit_month = sales_total_month - expenses_total_month
-    profit_year = sales_total_year - expenses_total_year
+    sales_total_month = monthly_summary['sales_total']
+    expenses_total_month = monthly_summary['expenses_total']
+    profit_month = monthly_summary['profit_total']
+    sales_total_year = year_summary['sales_total']
+    expenses_total_year = year_summary['expenses_total']
+    profit_year = year_summary['profit_total']
     margin_month = (profit_month / sales_total_month * 100) if sales_total_month else 0
     margin_year = (profit_year / sales_total_year * 100) if sales_total_year else 0
 
@@ -146,19 +183,10 @@ def home(request):
     )
     sales_objective = float(stock_bags) * average_value_per_bag
 
-    # Refresh stored periods with sales, then hide only future months from the history.
-    periods_with_sales = SaleItem.objects.values(
-        'sale__sale_date__year', 'sale__sale_date__month'
-    ).distinct()
-    for period in periods_with_sales:
-        period_year = period['sale__sale_date__year']
-        period_month = period['sale__sale_date__month']
-        if (period_year, period_month) <= (today.year, today.month):
-            sync_monthly_summary(period_year, period_month)
+    reconcile_monthly_summaries(today)
 
     monthly_records = MonthlySummary.objects.filter(
         Q(year__lt=today.year) | Q(year=today.year, month__lte=today.month),
-        sales_total__gt=0,
     ).order_by('-year', '-month')
 
     context = {
@@ -171,10 +199,14 @@ def home(request):
             }
             for year, month in available_periods
         ],
+        'current_year': today.year,
         'sales_total_month': format_cop(sales_total_month),
         'sales_objective': format_cop(sales_objective),
         'sales_objective_note': 'Valor del stock operativo multiplicado por el precio promedio por bolsa.',
         'sales_objective_stock': stock_bags,
+        'sales_total_year': format_cop(sales_total_year),
+        'expenses_total_year': format_cop(expenses_total_year),
+        'profit_year': format_cop(profit_year),
         'expenses_total_month': format_cop(expenses_total_month),
         'profit_month': format_cop(profit_month),
         'profit_month_value': profit_month,
@@ -187,10 +219,6 @@ def home(request):
         'stock_bags': stock_bags,
         'stock_kilos': stock_kilos,
         'sold_bags_total': sold_bags_total,
-        'total_sales_all_time': format_cop(all_time_sales_total),
-        'total_sold_bags_all_time': sold_bags_total,
-        'total_expenses_all_time': format_cop(expenses_total_year),
-        'total_profit_all_time': format_cop(profit_year),
         'monthly_records': monthly_records,
         'chart_labels': json.dumps(labels, ensure_ascii=False),
         'chart_sales_data': json.dumps(sales_history),
